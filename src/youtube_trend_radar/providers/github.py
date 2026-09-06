@@ -7,7 +7,7 @@ import os
 from youtube_trend_radar.config import AppConfig
 from youtube_trend_radar.http import CachedHttpClient
 from youtube_trend_radar.models import ProviderResult, SourceItem
-from youtube_trend_radar.providers.common import combined_status, oldest_stale_at
+from youtube_trend_radar.providers.common import apply_provenance, capture_document, combined_status, oldest_stale_at
 from youtube_trend_radar.utils import clean_text, compact_error, normalize_url, parse_datetime
 
 
@@ -64,10 +64,10 @@ def collect_watched(config: AppConfig, client: CachedHttpClient, now: datetime) 
             repo_payload = client.get(f"{API}/repos/{full_name}")
             cache_states.append((repo_payload.cache_state, repo_payload.fetched_at))
             repo = repo_payload.json()
-            items.append(_repo_item(repo, provider="github_watched", item_type="github_repository_snapshot", now=now))
+            items.append(apply_provenance(_repo_item(repo, provider="github_watched", item_type="github_repository_snapshot", now=now), repo_payload))
         except Exception as exc:
             failures.append(f"{full_name} metadata: {compact_error(exc)}")
-            continue
+            repo = {"html_url": f"https://github.com/{full_name}"}
 
         try:
             releases_payload = client.get(
@@ -78,7 +78,7 @@ def collect_watched(config: AppConfig, client: CachedHttpClient, now: datetime) 
             for release in releases_payload.json():
                 if release.get("draft") or (release.get("prerelease") and not include_prereleases):
                     continue
-                published = parse_datetime(release.get("published_at") or release.get("created_at"))
+                published = parse_datetime(release.get("published_at"))
                 if published and published < cutoff:
                     continue
                 tag = str(release.get("tag_name") or release.get("id"))
@@ -86,7 +86,7 @@ def collect_watched(config: AppConfig, client: CachedHttpClient, now: datetime) 
                 if full_name.lower() not in release_name.lower():
                     release_name = f"{full_name} {release_name}"
                 items.append(
-                    SourceItem(
+                    apply_provenance(capture_document(SourceItem(
                         provider="github_watched",
                         external_id=f"{full_name.lower()}@{tag}",
                         source_family="github",
@@ -99,9 +99,9 @@ def collect_watched(config: AppConfig, client: CachedHttpClient, now: datetime) 
                         observed_at=now,
                         entity=full_name.split("/", 1)[0],
                         authority="official",
-                        metrics={"repo_full_name": full_name, "release_tag": tag},
+                        metrics={"repo_full_name": full_name, "release_tag": tag, "release_id": release.get("id")},
                         related_links=[normalize_url(str(repo["html_url"]))],
-                    )
+                    ), str(release.get("body") or ""), "markdown"), releases_payload)
                 )
         except Exception as exc:
             failures.append(f"{full_name} releases: {compact_error(exc)}")
@@ -134,7 +134,7 @@ def collect_exploratory(config: AppConfig, client: CachedHttpClient, now: dateti
             )
             cache_states.append((payload.cache_state, payload.fetched_at))
             for repo in payload.json().get("items", []):
-                item = _repo_item(repo, provider="github_explore", item_type="github_exploratory_repository", now=now)
+                item = apply_provenance(_repo_item(repo, provider="github_explore", item_type="github_exploratory_repository", now=now), payload)
                 item.metrics["discovery_query"] = query
                 items_by_repo[item.external_id] = item
         except Exception as exc:

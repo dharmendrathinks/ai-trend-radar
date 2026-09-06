@@ -19,6 +19,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = subparsers.add_parser("doctor", help="check configuration, storage, credentials, and connectivity")
     doctor.add_argument("--config", default="config.toml", help="TOML configuration path")
+    brief = subparsers.add_parser("brief", help="show pending changes from the latest scan without fetching")
+    brief.add_argument("--config", default="config.toml")
+    brief.add_argument("--top", type=int, help="maximum new discoveries")
+    decide = subparsers.add_parser("decide", help="review, defer, or reopen one event")
+    decide.add_argument("event_id")
+    decide.add_argument("action", choices=["reviewed", "deferred", "reopen"])
+    decide.add_argument("--until", help="future ISO timestamp including timezone, for deferred")
+    decide.add_argument("--note")
+    decide.add_argument("--config", default="config.toml")
     return parser
 
 
@@ -34,6 +43,35 @@ def main(argv: list[str] | None = None) -> int:
         from youtube_trend_radar.pipeline import run_scan
 
         return run_scan(Path(args.config), top=args.top, no_youtube=args.no_youtube)
+    if args.command in {"brief", "decide"}:
+        from datetime import UTC, datetime
+        import sys
+        from youtube_trend_radar.config import load_config, ConfigError
+        from youtube_trend_radar.db import Database
+        from youtube_trend_radar.state import RadarState, render_brief
+        try:
+            config = load_config(Path(args.config))
+            database = Database(config.database_path)
+            database.initialize()
+            state = RadarState(database)
+            now = datetime.now(UTC)
+            if args.command == "brief":
+                top = args.top if args.top is not None else config.top_results
+                if top <= 0:
+                    raise ValueError("--top must be positive")
+                brief = state.brief(now, top)
+                print(render_brief(brief), flush=True)
+                state.acknowledge(brief)
+            else:
+                until = datetime.fromisoformat(args.until.replace("Z", "+00:00")) if args.until else None
+                if until is not None and until.tzinfo is None:
+                    raise ValueError("--until must include a timezone")
+                key = state.decide(args.event_id, args.action, now, until, args.note)
+                print(f"{key}: {args.action}")
+            return 0
+        except (ConfigError, ValueError, OSError, RuntimeError) as exc:
+            print(f"{args.command} failed: {exc}", file=sys.stderr)
+            return 1
     from youtube_trend_radar.doctor import run_doctor
 
     return run_doctor(Path(args.config))

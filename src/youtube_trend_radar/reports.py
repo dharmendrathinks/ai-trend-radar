@@ -11,9 +11,19 @@ import tempfile
 from youtube_trend_radar.config import AppConfig
 from youtube_trend_radar.models import Candidate, ProviderResult, isoformat
 from youtube_trend_radar.ranking import SCORING_VERSION
+from youtube_trend_radar.resolution import effective_item_time
 
 
-SCHEMA_VERSION = "1.5"
+SCHEMA_VERSION = "2.0"
+
+
+def _event_time_basis(candidate: Candidate) -> str:
+    if any(i.item_type == "github_observed_growth" for i in candidate.items):
+        return "observed growth interval ending"
+    primary = min((i for i in candidate.items if i.evidence_role != "project_context"), key=effective_item_time)
+    if primary.source_family == "huggingface" and primary.updated_at:
+        return "source modification time"
+    return "source publication time" if primary.published_at else ("source modification time" if primary.updated_at else "first seen locally; publication time unknown")
 
 
 def _candidate_dict(candidate: Candidate, now: datetime, unavailable: list[str]) -> dict[str, Any]:
@@ -24,7 +34,9 @@ def _candidate_dict(candidate: Candidate, now: datetime, unavailable: list[str])
         else candidate.title
     )
     return {
+        "event_id": candidate.fingerprint,
         "fingerprint": candidate.fingerprint,
+        "event_time_basis": _event_time_basis(candidate),
         "title": candidate.title,
         "display_title": display_title or candidate.title,
         "video_topic": candidate.video_topic or None,
@@ -51,7 +63,7 @@ def _candidate_dict(candidate: Candidate, now: datetime, unavailable: list[str])
             f"{age_hours:.1f}h old; {candidate.evidence_level}; "
             f"interest is {candidate.interest_band} because {candidate.interest_rule}."
         ),
-        "missing_or_uncertain": list(dict.fromkeys([*candidate.missing, *unavailable])),
+        "missing_or_uncertain": list(dict.fromkeys([*candidate.missing, *unavailable, *(["Source content is incomplete or summary-only"] if any(not i.content_complete for i in candidate.items) else [])])),
         "source_links": sorted(
             {item.canonical_url for item in candidate.items}
             | {link for item in candidate.items for link in item.related_links}
@@ -100,6 +112,21 @@ def build_report(
     }
 
 
+def _signal_time(signal: dict[str, Any]) -> str:
+    if signal["item_type"] == "github_observed_growth":
+        metrics = signal["metrics"]
+        return f"observed interval {metrics.get('growth_interval_start', 'unknown')} to {metrics.get('growth_interval_end', signal['published_at'])}"
+    if signal.get("published_at"):
+        label = f"published {signal['published_at']}"
+    elif signal.get("first_seen_at"):
+        label = f"first seen {signal['first_seen_at']} (publication time unknown)"
+    else:
+        label = f"observed {signal['observed_at']}"
+    if signal.get("last_confirmed_at"):
+        label += f"; confirmed {signal['last_confirmed_at']} ({signal.get('cache_state', 'unknown')})"
+    return label
+
+
 def render_markdown(report: dict[str, Any]) -> str:
     lines = [
         "# YouTube Trend Radar",
@@ -128,6 +155,8 @@ def render_markdown(report: dict[str, Any]) -> str:
         lines.extend(
             [
                 f"### {index}. {candidate.get('display_title') or candidate['title']}",
+                "",
+                f"Event: `{candidate.get('event_id', candidate['fingerprint'])}` · Time basis: {candidate.get('event_time_basis', 'source timestamp')}",
                 "",
             ]
         )
@@ -174,7 +203,8 @@ def render_markdown(report: dict[str, Any]) -> str:
                 if isinstance(value, (str, int, float)) and value not in ("", None):
                     metric_parts.append(f"{key}={value}")
             metrics = f" ({', '.join(metric_parts[:6])})" if metric_parts else ""
-            lines.append(f"- [{signal['provider']}] [{signal['title']}]({signal['canonical_url']}) — {signal['published_at'] or signal['observed_at']}{metrics}")
+            role = "Project context (not release interest): " if signal.get("evidence_role") == "project_context" else ""
+            lines.append(f"- {role}[{signal['provider']}] [{signal['title']}]({signal['canonical_url']}) — {_signal_time(signal)}{metrics}")
 
         youtube = candidate["youtube_evidence"]
         lines.extend(["", f"YouTube evidence ({youtube.get('status', 'not checked')} — not included in Discovery Priority):", ""])
@@ -266,7 +296,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         for signal in candidate["observed_signals"]:
             lines.append(
                 f"- [{signal['provider']}] [{signal['title']}]({signal['canonical_url']}) — "
-                f"{signal['published_at'] or signal['observed_at']}"
+                f"{_signal_time(signal)}"
             )
         lines.append("")
 
@@ -304,7 +334,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         for signal in candidate["observed_signals"]:
             lines.append(
                 f"- [{signal['provider']}] [{signal['title']}]({signal['canonical_url']}) — "
-                f"{signal['published_at'] or signal['observed_at']}"
+                f"{_signal_time(signal)}"
             )
         lines.append("")
 

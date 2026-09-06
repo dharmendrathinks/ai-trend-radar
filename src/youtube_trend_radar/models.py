@@ -34,8 +34,37 @@ class SourceItem:
     metrics: dict[str, Any] = field(default_factory=dict)
     related_links: list[str] = field(default_factory=list)
 
+    first_seen_at: datetime | None = None
+    body_fetched_at: datetime | None = None
+    last_confirmed_at: datetime | None = None
+    cache_state: str = "live"
+    full_text: str | None = None
+    content_format: str | None = None
+    content_complete: bool = True
+    evidence_role: str = "event"
+
+    @property
+    def measurement_time(self) -> datetime:
+        return self.last_confirmed_at or self.body_fetched_at or self.observed_at
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> SourceItem:
+        value = dict(value)
+        for key in ("published_at", "updated_at", "observed_at", "first_seen_at", "body_fetched_at", "last_confirmed_at"):
+            if value.get(key):
+                value[key] = datetime.fromisoformat(value[key].replace("Z", "+00:00"))
+        return cls(**value)
+
     def to_dict(self) -> dict[str, Any]:
         return {
+            "first_seen_at": isoformat(self.first_seen_at),
+            "body_fetched_at": isoformat(self.body_fetched_at),
+            "last_confirmed_at": isoformat(self.last_confirmed_at),
+            "cache_state": self.cache_state,
+            "full_text": self.full_text,
+            "content_format": self.content_format,
+            "content_complete": self.content_complete,
+            "evidence_role": self.evidence_role,
             "provider": self.provider,
             "external_id": self.external_id,
             "source_family": self.source_family,

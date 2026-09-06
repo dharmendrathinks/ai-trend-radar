@@ -75,6 +75,49 @@ uv run youtube-trend-radar scan --config path/to/config.toml
 
 Every scan writes uniquely named Markdown and JSON reports under `reports/`, plus local `latest.md` and `latest.json` pointers. SQLite observations and HTTP cache records live under `data/`. These paths, `.env`, and `config.toml` are intentionally ignored by Git.
 
+
+### Changes-only brief and review decisions
+
+Scans also write `reports/latest.brief.md` and `reports/latest.brief.json` alongside the full reports. The brief shows new qualifying discoveries, material updates, and deferred items that are due. Updates and reminders have separate limits, so they do not consume the new-discovery allowance. Exploration continues across the same sources, including projects outside your watchlist.
+
+Use the event ID printed in the report (or an unambiguous prefix of at least four characters):
+
+```bash
+# Mark this occurrence reviewed; this does not suppress future releases.
+uv run youtube-trend-radar decide EVENT_ID reviewed
+
+# Keep it quiet until a specific time, including timezone.
+uv run youtube-trend-radar decide EVENT_ID deferred --until 2026-10-01T09:00:00+05:30
+
+# Explicitly bring an item back.
+uv run youtube-trend-radar decide EVENT_ID reopen
+
+# Show remaining pending discoveries and due reminders without fetching.
+uv run youtube-trend-radar brief --top 5
+```
+
+Both commands accept `--config path/to/config.toml`; decisions also accept `--note "..."`. `brief` prints pending cards and records their delivery. To reread the brief already delivered by a scan, open `latest.brief.md`. Rendering a card is not a reviewed decision. Overflow stays pending rather than being marked delivered, and failed output can be retried.
+
+Reviewed items can reappear when source text changes (whitespace-only changes are ignored), event interest moves into a stronger band, or a watch item qualifies for the main list. These are deterministic triggers, not semantic novelty judgments. Deferred items stay quiet until their deadline even if evidence changes. An overdue item absent from the latest scan is labeled as not rechecked. The full discovery report continues to show current opportunities regardless of review state.
+
+### Event and input guarantees
+
+- Distinct releases have distinct event IDs; adding exact supporting evidence preserves the stored ID. Native GitHub release IDs distinguish recreated releases, and conflicting releases cannot be combined through a third item.
+- Repository star-growth events use successive persisted checkpoints and fixed observation intervals. Unchanged counters do not create a new occurrence or reset freshness. A long observation interval is reported as such, not described as acceleration.
+- Repository-wide activity and discussions linking to a project homepage are project context, not interest in a specific release.
+- Cross-source coverage is a ranking heuristic, not independent verification of a capability.
+- Undated items age from their stored first-seen time. JSON distinguishes acquisition, validation, cache state, and event-time basis. Cache/stale reads do not create metric observations; a 304 records an explicit revalidation while preserving body acquisition time.
+- GitHub release Markdown is captured separately from the 2,000-character display summary. The deterministic extractor reads the captured notes, so features near the end can be found. Official feeds retain supplied full-content fields or mark summary-only content. Documents are capped at 1,000,000 characters and incompleteness is disclosed. Collection limits still apply; no linked-page crawler or broad pagination was added.
+
+Full source text is local data in SQLite and JSON reports, just like the existing source summaries. It is not included in Git. This change does not establish unrestricted redistribution rights for third-party content or an exact historical replay guarantee.
+
+### Existing databases
+
+The application applies an additive, idempotent SQLite migration on the next run. Existing source items, scans, and metric history are retained. Old metric observations lack cache provenance, so they are labeled `legacy` and excluded from new measured-growth baselines. New growth checkpoints begin with a verified response; do not interpret that initial warm-up as a lack of project activity.
+
+Old reports keep their original identities. New reports use schema `2.0`, corrected scoring `v1.1`, and deterministic extraction `release-topic-v1.2`. `event_id` is the durable review key; `fingerprint` remains an alias for compatibility. Review state starts with the new event ledger. Unsupported future database versions are rejected.
+
+
 ## What it watches
 
 | Source | V1 responsibility | Credential |
@@ -104,7 +147,7 @@ Freshness uses the best credible event timestamp and a configurable 48-hour half
 Freshness = 100 × 2 ^ (-age_hours / 48)
 ```
 
-Evidence Strength reflects observable provenance: an authoritative source, independent confirmation, or a single community source. Interest is a configured `strong`, `moderate`, or `early/limited` band backed by current HN, GitHub, Hugging Face, and source-family measurements.
+Evidence Strength reflects observable provenance: an authoritative source, cross-source coverage, or a single community source. Interest is a configured `strong`, `moderate`, or `early/limited` band backed by current HN, GitHub, Hugging Face, and source-family measurements.
 
 ```text
 Discovery Priority = 0.60 × Freshness
@@ -112,7 +155,7 @@ Discovery Priority = 0.60 × Freshness
                    + 0.15 × Interest Value
 ```
 
-Discovery Priority orders discovery evidence; it is not a probability, virality forecast, or YouTube opportunity score. A separate presentation floor requires sufficient freshness plus moderate/strong interest, independent confirmation, or authoritative actionable evidence before a candidate enters Top Opportunities. All thresholds live in `config.toml` and are starting heuristics, not scientifically calibrated predictions.
+Discovery Priority orders discovery evidence; it is not a probability, virality forecast, or YouTube opportunity score. A separate presentation floor requires sufficient freshness plus moderate/strong interest, cross-source coverage, or authoritative actionable evidence before a candidate enters Top Opportunities. All thresholds live in `config.toml` and are starting heuristics, not scientifically calibrated predictions.
 
 ## Credentials
 

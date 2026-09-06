@@ -8,7 +8,7 @@ from youtube_trend_radar.models import Candidate, SourceItem, isoformat
 from youtube_trend_radar.utils import clean_text
 
 
-EXTRACTION_VERSION = "release-topic-v1.1"
+EXTRACTION_VERSION = "release-topic-v1.2"
 TOPICABILITY_VERSION = "topicability-v1.0"
 WORD_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9+._/-]*")
 REPOSITORY_RE = re.compile(r"\b[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\b")
@@ -369,7 +369,7 @@ def extract_release_topic(candidate: Candidate, config: dict[str, Any] | None = 
         "developer_terms": _configured_terms(config, "developer_terms", DEFAULT_DEVELOPER_TERMS),
         "high_impact_terms": _configured_terms(config, "high_impact_terms", DEFAULT_HIGH_IMPACT_TERMS),
     }
-    for bullet in _release_bullets(release.summary):
+    for bullet in _release_bullets(release.full_text if release.full_text is not None else release.summary):
         classification = _meaningful_change(bullet, **options)
         if classification:
             tier, rule = classification
@@ -395,6 +395,7 @@ def extract_release_topic(candidate: Candidate, config: dict[str, Any] | None = 
         specificity = "low"
 
     return {
+        "input_complete": release.content_complete,
         "kind": "release",
         "parent_event_id": release.external_id,
         "parent_candidate_fingerprint": candidate.fingerprint,
@@ -426,7 +427,7 @@ def _attach_topicability(candidate: Candidate) -> None:
 
     promotion_rule = None
     if len(candidate.source_families) >= 2:
-        promotion_rule = f"independently confirmed by {len(candidate.source_families)} source families"
+        promotion_rule = f"covered by {len(candidate.source_families)} source families"
     elif candidate.interest_band == "strong":
         promotion_rule = f"strong configured interest evidence: {candidate.interest_rule}"
     topic["topicability"] = {

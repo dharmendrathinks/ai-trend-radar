@@ -9,9 +9,10 @@ import unicodedata
 from youtube_trend_radar.config import AppConfig, InterestConfig
 from youtube_trend_radar.models import Candidate, SourceItem
 from youtube_trend_radar.resolution import effective_item_time, is_relevant, resolve_items
+from youtube_trend_radar.utils import normalize_url
 
 
-SCORING_VERSION = "v1.0"
+SCORING_VERSION = "v1.1"
 
 
 def observed_delta(item: SourceItem, metric: str) -> float | None:
@@ -41,33 +42,8 @@ def eligible_items(items: list[SourceItem], config: AppConfig, now: datetime) ->
                     )
                 )
                 continue
-            growth = item.metrics.get("observed_growth", {})
-            stars = growth.get("metrics", {}).get("stars", {})
-            duration = float(growth.get("observation_duration_hours", 0.0) or 0.0)
-            delta = float(stars.get("delta", 0.0) or 0.0)
-            initial = float(stars.get("initial", 0.0) or 0.0)
-            relative_percent = (delta / initial * 100.0) if initial > 0 else (100.0 if delta > 0 else 0.0)
-            gate = config.ranking.eligibility
-            if (
-                growth.get("available")
-                and duration >= gate.watched_repo_growth_min_observation_hours
-                and delta >= gate.watched_repo_growth_min_star_delta
-                and relative_percent >= gate.watched_repo_growth_min_relative_percent
-            ):
-                repo = str(item.metrics.get("repo_full_name", item.title))
-                output.append(
-                    replace(
-                        item,
-                        item_type="github_observed_growth",
-                        title=f"{repo}: observed star growth (+{int(delta)} over {duration:.1f}h)",
-                        published_at=item.observed_at,
-                        metrics={
-                            **item.metrics,
-                            "event_basis": "configured observed-growth trigger",
-                            "observed_star_relative_percent": round(relative_percent, 3),
-                        },
-                    )
-                )
+            # Growth occurrences are emitted once by the persistent checkpoint ledger.
+            # A cumulative snapshot alone is never a new event.
             continue
         age_hours = max(0.0, (now - effective_item_time(item)).total_seconds() / 3600)
         if age_hours > maximum_age_hours:
@@ -90,13 +66,21 @@ def attach_repository_support(candidates: list[Candidate], items: list[SourceIte
             for item in candidate.items
             if item.metrics.get("repo_full_name")
         }
+        if any(i.item_type == "github_release" for i in candidate.items):
+            project_urls = {normalize_url(f"https://github.com/{repo}").lower() for repo in repositories}
+            candidate.items = [replace(i, evidence_role="project_context")
+                               if i.item_type != "github_release" and normalize_url(i.canonical_url).lower() in project_urls
+                               else i for i in candidate.items]
+            event_items = [i for i in candidate.items if i.evidence_role == "event"]
+            candidate.source_families = sorted({i.source_family for i in event_items})
+            candidate.effective_event_time = min(effective_item_time(i) for i in event_items)
         for repository in repositories:
             snapshot = snapshots.get(repository)
             if snapshot and all(
                 not (item.provider == snapshot.provider and item.external_id == snapshot.external_id)
                 for item in candidate.items
             ):
-                candidate.items.append(snapshot)
+                candidate.items.append(replace(snapshot, evidence_role="project_context"))
 
 
 def candidate_is_eligible(candidate: Candidate, config: AppConfig) -> bool:
@@ -249,7 +233,7 @@ def partition_main_list_floor(
     for candidate in candidates:
         fresh_enough = candidate.freshness >= minimum_freshness
         meaningful_interest = candidate.interest_band in {"moderate", "strong"}
-        independently_confirmed = len(candidate.source_families) >= 2
+        cross_source_coverage = len(candidate.source_families) >= 2
         authoritative = any(
             item.authority == "official" or item.source_family == "official"
             for item in candidate.items
@@ -258,7 +242,7 @@ def partition_main_list_floor(
             label
             for matched, label in (
                 (meaningful_interest, f"{candidate.interest_band} observed interest"),
-                (independently_confirmed, "multiple independent source families"),
+                (cross_source_coverage, "multiple source families"),
                 (authoritative, "authoritative event with actionable topicability"),
             )
             if matched
@@ -286,7 +270,7 @@ def partition_main_list_floor(
             )
         if not promotion_reasons:
             failed_conditions.append(
-                "no moderate/strong interest, independent confirmation, or authoritative event"
+                "no moderate/strong interest, cross-source coverage, or authoritative event"
             )
         candidate.presentation_gate = {
             "status": "watch",
@@ -312,11 +296,11 @@ def freshness_score(candidate: Candidate, config: AppConfig, now: datetime) -> f
 def evidence(candidate: Candidate) -> tuple[str, int]:
     official = any(item.authority == "official" or item.source_family == "official" for item in candidate.items)
     if official and len(candidate.source_families) >= 2:
-        return "authoritative + independently confirmed", 100
+        return "authoritative source + cross-source coverage", 100
     if official:
         return "authoritative primary source", 90
     if len(candidate.source_families) >= 2:
-        return "multiple independent source families", 80
+        return "multiple source families", 80
     return "single non-official source family", 55
 
 
@@ -332,6 +316,8 @@ def _candidate_metrics(candidate: Candidate, now: datetime) -> dict[str, Any]:
         "source_family_count": len(candidate.source_families),
     }
     for item in candidate.items:
+        if item.evidence_role == "project_context" or item.item_type == "github_repository_snapshot":
+            continue
         if item.source_family == "hacker_news":
             metrics["hn_points"] = max(metrics["hn_points"] or 0, int(item.metrics.get("points", 0)))
             metrics["hn_comments"] = max(metrics["hn_comments"] or 0, int(item.metrics.get("comments", 0)))

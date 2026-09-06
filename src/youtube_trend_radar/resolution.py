@@ -93,14 +93,14 @@ def is_relevant(item: SourceItem, config: AppConfig) -> bool:
 
 def effective_item_time(item: SourceItem) -> datetime:
     if item.item_type == "github_repository_snapshot":
-        return item.published_at or item.updated_at or item.observed_at
+        return item.published_at or item.updated_at or item.first_seen_at or item.observed_at
     if item.item_type == "github_observed_growth":
-        return item.observed_at
+        return item.published_at or item.first_seen_at or item.observed_at
     if item.item_type == "github_exploratory_repository":
-        return item.published_at or item.observed_at
+        return item.published_at or item.first_seen_at or item.observed_at
     if item.source_family == "huggingface":
-        return item.updated_at or item.published_at or item.observed_at
-    return item.published_at or item.updated_at or item.observed_at
+        return item.updated_at or item.published_at or item.first_seen_at or item.observed_at
+    return item.published_at or item.updated_at or item.first_seen_at or item.observed_at
 
 
 def event_anchors(item: SourceItem, config: AppConfig) -> set[str]:
@@ -127,13 +127,15 @@ def _jaccard(left: str, right: str) -> float:
 
 
 def should_merge(left: SourceItem, right: SourceItem, config: AppConfig) -> bool:
+    if incompatible([left, right]):
+        return False
     left_url, right_url = normalize_url(left.canonical_url), normalize_url(right.canonical_url)
     if left_url and left_url == right_url:
         return True
 
     left_repo, right_repo = left.metrics.get("repo_full_name"), right.metrics.get("repo_full_name")
     left_tag, right_tag = left.metrics.get("release_tag"), right.metrics.get("release_tag")
-    if left_repo and left_tag and str(left_repo).lower() == str(right_repo).lower() and str(left_tag).lower() == str(right_tag).lower():
+    if left_repo and left_tag and str(left_repo).lower() == str(right_repo).lower() and str(left_tag) == str(right_tag):
         return True
 
     delta_hours = abs((effective_item_time(left) - effective_item_time(right)).total_seconds()) / 3600
@@ -156,12 +158,25 @@ def _candidate_title(items: list[SourceItem]) -> str:
     return max(pool, key=lambda item: (len(normalized_tokens(item.title)), len(item.title))).title
 
 
+def occurrence_key(item: SourceItem) -> str:
+    repo, tag = item.metrics.get("repo_full_name"), item.metrics.get("release_tag")
+    if item.item_type == "github_release" and item.metrics.get("release_id") is not None:
+        return f"release-id:{item.metrics['release_id']}"
+    if item.item_type == "github_release" and repo and tag:
+        return f"release:{str(repo).lower()}@{tag}"
+    return f"{item.provider}:{item.item_type}:{item.external_id}"
+
+
+def incompatible(items: list[SourceItem]) -> bool:
+    releases = {occurrence_key(i) for i in items if i.item_type == "github_release"}
+    existing = {i.metrics.get("persisted_event_id") for i in items if i.metrics.get("persisted_event_id")}
+    growth = {occurrence_key(i) for i in items if i.item_type == "github_observed_growth"}
+    return len(releases) > 1 or len(existing) > 1 or (bool(growth) and len({occurrence_key(i) for i in items}) > 1)
+
+
 def _fingerprint(items: list[SourceItem], config: AppConfig) -> str:
-    anchors = sorted(set().union(*(event_anchors(item, config) for item in items)))
-    canonical = sorted(normalize_url(item.canonical_url) for item in items if item.canonical_url)
-    identity = anchors[0] if anchors else (canonical[0] if canonical else normalized_title(_candidate_title(items)))
-    entity = next((item.entity for item in items if item.entity), "unknown")
-    return sha256(f"{entity}|{identity}".encode()).hexdigest()[:16]
+    primary = min(items, key=lambda i: (i.item_type != "github_release", i.authority != "official", occurrence_key(i)))
+    return sha256(occurrence_key(primary).encode()).hexdigest()[:24]
 
 
 def cluster_items(items: list[SourceItem], config: AppConfig) -> list[Candidate]:
@@ -176,7 +191,9 @@ def cluster_items(items: list[SourceItem], config: AppConfig) -> list[Candidate]
     def union(left: int, right: int) -> None:
         left_root, right_root = find(left), find(right)
         if left_root != right_root:
-            parent[right_root] = left_root
+            combined = [item for index, item in enumerate(items) if find(index) in {left_root, right_root}]
+            if not incompatible(combined):
+                parent[right_root] = left_root
 
     for left in range(len(items)):
         for right in range(left + 1, len(items)):
@@ -189,7 +206,7 @@ def cluster_items(items: list[SourceItem], config: AppConfig) -> list[Candidate]
 
     candidates: list[Candidate] = []
     for group in groups.values():
-        ordered = sorted(group, key=effective_item_time)
+        ordered = sorted(group, key=lambda item: (effective_item_time(item), occurrence_key(item)))
         entities = [item.entity for item in ordered if item.entity]
         candidates.append(
             Candidate(

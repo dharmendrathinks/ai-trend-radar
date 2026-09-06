@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Callable
 from uuid import uuid4
 import logging
+import json
 import os
 import sys
 
@@ -23,7 +24,8 @@ from youtube_trend_radar.ranking import (
     partition_main_list_floor,
     rank_candidates,
 )
-from youtube_trend_radar.reports import build_report, write_reports
+from youtube_trend_radar.reports import build_report, write_reports, _candidate_dict, _atomic_write
+from youtube_trend_radar.state import RadarState, render_brief
 from youtube_trend_radar.resolution import cluster_items
 from youtube_trend_radar.topics import attach_video_topics, partition_topicable_candidates
 from youtube_trend_radar.utils import compact_error
@@ -80,15 +82,21 @@ def run_scan(config_path: Path, *, top: int | None = None, no_youtube: bool = Fa
             database.record_provider_result(result)
             all_items.extend(result.items)
 
-        eligible = eligible_items(all_items, config, started)
+        state = RadarState(database)
+        growth = state.growth_events(all_items, config, started)
+        state.annotate([*all_items, *growth])
+        eligible = eligible_items([*all_items, *growth], config, started)
         candidates = cluster_items(eligible, config)
         attach_repository_support(candidates, all_items)
+        state.bind(candidates)
         candidates = rank_candidates(filter_eligible_candidates(candidates, config), config, started)
+        all_candidates = list(candidates)
         candidates, community_watch = partition_community_watch(candidates, config)
         attach_video_topics(candidates, config.topics)
         topicable, release_watch = partition_topicable_candidates(candidates, len(candidates))
         promoted, floor_watch = partition_main_list_floor(topicable, config)
         selected = promoted[:result_count]
+        main_ids = {c.fingerprint for c in promoted}
         release_watch.extend(
             candidate
             for candidate in floor_watch
@@ -154,6 +162,17 @@ def run_scan(config_path: Path, *, top: int | None = None, no_youtube: bool = Fa
             provider_statuses=[result.status_dict() for result in provider_results],
             report=report,
         )
+        state.save_candidates([
+            (_candidate_dict(c, started, []), 'main' if c.fingerprint in main_ids else 'watch')
+            for c in all_candidates
+        ], scan_id)
+        brief = state.brief(completed, result_count, scan_id)
+        brief['provider_status'] = report['provider_status']
+        brief['status'] = status
+        _atomic_write(config.reports_path / 'latest.brief.md', render_brief(brief))
+        _atomic_write(config.reports_path / 'latest.brief.json', json.dumps(brief, indent=2, ensure_ascii=False) + '\n')
+        state.acknowledge(brief)
+        print(f"Changes: {config.reports_path / 'latest.brief.md'}")
         print(
             f"Scan {scan_id}: {status}; {len(selected)} recommendations; "
             f"{len(release_watch)} release watch; {len(community_watch)} community watch"

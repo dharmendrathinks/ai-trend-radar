@@ -8,7 +8,7 @@ import feedparser
 from youtube_trend_radar.config import AppConfig
 from youtube_trend_radar.http import CachedHttpClient
 from youtube_trend_radar.models import ProviderResult, SourceItem
-from youtube_trend_radar.providers.common import combined_status, oldest_stale_at
+from youtube_trend_radar.providers.common import apply_provenance, capture_document, combined_status, oldest_stale_at
 from youtube_trend_radar.utils import clean_text, compact_error, normalize_url, parse_datetime
 
 
@@ -43,8 +43,10 @@ def collect(config: AppConfig, client: CachedHttpClient, now: datetime) -> Provi
                 if not title:
                     continue
                 external_id = str(entry.get("id") or link)
+                content = entry.get("content") or []
+                full_text = "\n\n".join(str(part.get("value", "")) for part in content) if content else str(entry.get("summary") or entry.get("description") or "")
                 items.append(
-                    SourceItem(
+                    apply_provenance(capture_document(SourceItem(
                         provider="official",
                         external_id=f"{feed.name}:{external_id}",
                         source_family="official",
@@ -59,7 +61,7 @@ def collect(config: AppConfig, client: CachedHttpClient, now: datetime) -> Provi
                         authority="official",
                         metrics={"feed_name": feed.name},
                         related_links=[feed.url],
-                    )
+                    ), full_text, "html", complete=bool(content)), payload)
                 )
         except Exception as exc:
             failures.append(f"{feed.name}: {compact_error(exc)}")

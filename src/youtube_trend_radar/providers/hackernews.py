@@ -29,25 +29,25 @@ def collect(config: AppConfig, client: CachedHttpClient, now: datetime) -> Provi
         except Exception as exc:
             failures.append(f"{feed}: {compact_error(exc)}")
 
-    stories: list[tuple[dict[str, Any], str, datetime]] = []
+    stories: list[tuple[dict[str, Any], str, datetime, datetime | None]] = []
 
-    def fetch(story_id: int) -> tuple[dict[str, Any], str, datetime]:
+    def fetch(story_id: int) -> tuple[dict[str, Any], str, datetime, datetime | None]:
         payload = client.get(f"{API}/item/{story_id}.json")
-        return payload.json(), payload.cache_state, payload.fetched_at
+        return payload.json(), payload.cache_state, payload.fetched_at, payload.confirmed_at
 
     with ThreadPoolExecutor(max_workers=12) as executor:
         futures = {executor.submit(fetch, story_id): story_id for story_id in ids}
         for future in as_completed(futures):
             try:
-                story, state, fetched_at = future.result()
+                story, state, fetched_at, confirmed_at = future.result()
                 if story:
-                    stories.append((story, state, fetched_at))
+                    stories.append((story, state, fetched_at, confirmed_at))
             except Exception as exc:
                 failures.append(f"item {futures[future]}: {compact_error(exc)}")
 
     cutoff = now - timedelta(days=config.lookback_days)
     items: list[SourceItem] = []
-    for story, state, fetched_at in stories:
+    for story, state, fetched_at, confirmed_at in stories:
         cache_states.append((state, fetched_at))
         published = parse_datetime(datetime.fromtimestamp(int(story.get("time", 0)), tz=now.tzinfo))
         if not published or published < cutoff or story.get("deleted") or story.get("dead"):
@@ -67,6 +67,9 @@ def collect(config: AppConfig, client: CachedHttpClient, now: datetime) -> Provi
                 published_at=published,
                 updated_at=None,
                 observed_at=now,
+                body_fetched_at=fetched_at,
+                last_confirmed_at=confirmed_at or fetched_at,
+                cache_state=state,
                 metrics={
                     "points": int(story.get("score", 0)),
                     "comments": int(story.get("descendants", 0)),

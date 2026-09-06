@@ -23,6 +23,7 @@ class HttpPayload:
     headers: dict[str, str]
     fetched_at: datetime
     cache_state: str = "live"
+    confirmed_at: datetime | None = None
 
     def json(self) -> Any:
         return json.loads(self.body)
@@ -77,7 +78,7 @@ class CachedHttpClient:
         cache_key, safe_url = self._cache_key(url, params)
         cached = self.database.get_cache(cache_key)
         if cached and cached.expires_at > now:
-            return HttpPayload(cached.body, cached.status_code, cached.headers, cached.fetched_at, "cached")
+            return HttpPayload(cached.body, cached.status_code, cached.headers, cached.fetched_at, "cached", cached.confirmed_at)
 
         request_headers = {**self.default_headers, **(headers or {})}
         if cached and cached.etag:
@@ -103,13 +104,14 @@ class CachedHttpClient:
                         body=cached.body,
                         status_code=cached.status_code,
                         headers=cached.headers,
-                        fetched_at=now,
+                        fetched_at=cached.fetched_at,
                         expires_at=now + ttl,
                         etag=cached.etag,
                         last_modified=cached.last_modified,
+                        confirmed_at=now,
                     )
                     self.database.put_cache(refreshed)
-                    return HttpPayload(cached.body, cached.status_code, cached.headers, now, "validated-cache")
+                    return HttpPayload(cached.body, cached.status_code, cached.headers, cached.fetched_at, "validated-cache", now)
                 if response.status_code in {429, 500, 502, 503, 504}:
                     if attempt < self.config.max_retries:
                         retry_after = response.headers.get("Retry-After")
@@ -134,9 +136,10 @@ class CachedHttpClient:
                     expires_at=now + ttl,
                     etag=response.headers.get("ETag"),
                     last_modified=response.headers.get("Last-Modified"),
+                    confirmed_at=now,
                 )
                 self.database.put_cache(record)
-                return HttpPayload(response.content, response.status_code, selected_headers, now)
+                return HttpPayload(response.content, response.status_code, selected_headers, now, "live", now)
             except (httpx.HTTPError, HttpRequestError, ValueError) as exc:
                 last_error = exc
                 if attempt < self.config.max_retries and not isinstance(exc, HttpRequestError):
@@ -144,7 +147,7 @@ class CachedHttpClient:
                     continue
                 break
 
-        if cached and now - cached.fetched_at <= timedelta(hours=self.config.stale_if_error_hours):
-            return HttpPayload(cached.body, cached.status_code, cached.headers, cached.fetched_at, "stale")
+        if cached and now - (cached.confirmed_at or cached.fetched_at) <= timedelta(hours=self.config.stale_if_error_hours):
+            return HttpPayload(cached.body, cached.status_code, cached.headers, cached.fetched_at, "stale", cached.confirmed_at)
         raise HttpRequestError(self._sanitize(str(last_error or "request failed")))
 

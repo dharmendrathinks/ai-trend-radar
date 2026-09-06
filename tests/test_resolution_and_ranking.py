@@ -202,7 +202,7 @@ def test_old_watched_repository_snapshot_is_support_only(config: AppConfig) -> N
     assert eligible_items([item], config, NOW) == []
 
 
-def test_watched_repository_growth_requires_duration_absolute_and_relative_gates(config: AppConfig) -> None:
+def test_cumulative_snapshot_does_not_create_an_untracked_growth_event(config: AppConfig) -> None:
     item = make_item(
         "openai/codex: coding agent",
         provider="github_watched",
@@ -222,10 +222,7 @@ def test_watched_repository_growth_requires_duration_absolute_and_relative_gates
         },
     )
     events = eligible_items([item], config, NOW)
-    assert len(events) == 1
-    assert events[0].item_type == "github_observed_growth"
-    assert events[0].published_at == item.observed_at
-    assert events[0].metrics["observed_star_relative_percent"] == 1.0
+    assert events == []
 
 
 def test_new_watched_repository_uses_creation_time_as_event(config: AppConfig) -> None:
@@ -267,7 +264,7 @@ def test_repository_snapshot_supports_release_without_changing_event_time(config
     candidates = cluster_items([release], config)
     original_time = candidates[0].effective_event_time
     attach_repository_support(candidates, [release, snapshot])
-    assert snapshot in candidates[0].items
+    assert any(i.external_id == snapshot.external_id and i.evidence_role == "project_context" for i in candidates[0].items)
     assert candidates[0].effective_event_time == original_time
 
 

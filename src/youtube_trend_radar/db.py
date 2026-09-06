@@ -74,6 +74,7 @@ class CacheRecord:
     expires_at: datetime
     etag: str | None
     last_modified: str | None
+    confirmed_at: datetime | None = None
 
 
 def _parse_time(value: str) -> datetime:
@@ -102,7 +103,17 @@ class Database:
 
     def initialize(self) -> None:
         with self.connect() as connection:
+            version = connection.execute("PRAGMA user_version").fetchone()[0]
+            if version > 1:
+                raise RuntimeError(f"unsupported database schema {version}")
             connection.executescript(SCHEMA)
+            if "confirmed_at" not in {r[1] for r in connection.execute("PRAGMA table_info(http_cache)")}:
+                connection.execute("ALTER TABLE http_cache ADD COLUMN confirmed_at TEXT")
+            if "measurement_kind" not in {r[1] for r in connection.execute("PRAGMA table_info(observations)")}:
+                connection.execute("ALTER TABLE observations ADD COLUMN measurement_kind TEXT NOT NULL DEFAULT 'legacy'")
+            from youtube_trend_radar.state import STATE_SCHEMA
+            connection.executescript(STATE_SCHEMA)
+            connection.execute("PRAGMA user_version=1")
 
     def healthcheck(self) -> None:
         with self.connect() as connection:
@@ -123,6 +134,7 @@ class Database:
             expires_at=_parse_time(row["expires_at"]),
             etag=row["etag"],
             last_modified=row["last_modified"],
+            confirmed_at=_parse_time(row["confirmed_at"]) if row["confirmed_at"] else None,
         )
 
     def put_cache(self, record: CacheRecord) -> None:
@@ -130,13 +142,13 @@ class Database:
             connection.execute(
                 """
                 INSERT INTO http_cache
-                    (cache_key, url, body, status_code, headers_json, fetched_at, expires_at, etag, last_modified)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (cache_key, url, body, status_code, headers_json, fetched_at, expires_at, etag, last_modified, confirmed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(cache_key) DO UPDATE SET
                     url=excluded.url, body=excluded.body, status_code=excluded.status_code,
                     headers_json=excluded.headers_json, fetched_at=excluded.fetched_at,
                     expires_at=excluded.expires_at, etag=excluded.etag,
-                    last_modified=excluded.last_modified
+                    last_modified=excluded.last_modified, confirmed_at=excluded.confirmed_at
                 """,
                 (
                     record.cache_key,
@@ -148,6 +160,7 @@ class Database:
                     isoformat(record.expires_at),
                     record.etag,
                     record.last_modified,
+                    isoformat(record.confirmed_at),
                 ),
             )
 
@@ -162,13 +175,13 @@ class Database:
         with self.connect() as connection:
             row = connection.execute(
                 """SELECT observed_at, metrics_json FROM observations
-                   WHERE provider = ? AND external_id = ?
+                   WHERE provider = ? AND external_id = ? AND measurement_kind != 'legacy'
                    ORDER BY observed_at ASC LIMIT 1""",
                 (item.provider, item.external_id),
             ).fetchone()
         growth: dict[str, Any] = {
             "available": row is not None,
-            "first_observed_at": isoformat(item.observed_at),
+            "first_observed_at": isoformat(item.measurement_time),
             "observation_duration_hours": 0.0,
             "metrics": {},
         }
@@ -178,7 +191,7 @@ class Database:
             first_metrics = json.loads(row["metrics_json"])
             growth["first_observed_at"] = isoformat(first_time)
             growth["observation_duration_hours"] = round(
-                max(0.0, (item.observed_at - first_time).total_seconds() / 3600), 3
+                max(0.0, (item.measurement_time - first_time).total_seconds() / 3600), 3
             )
         for key, current in numeric.items():
             initial = first_metrics.get(key, current)
@@ -192,6 +205,8 @@ class Database:
     def record_provider_result(self, result: ProviderResult) -> None:
         with self.connect() as connection:
             for item in result.items:
+                first = connection.execute("SELECT first_observed_at FROM source_items WHERE provider=? AND external_id=?", (item.provider, item.external_id)).fetchone()
+                item.first_seen_at = _parse_time(first[0]) if first else item.observed_at
                 payload = json.dumps(item.to_dict(), sort_keys=True, ensure_ascii=False)
                 connection.execute(
                     """
@@ -224,12 +239,12 @@ class Database:
                     for key, value in item.metrics.items()
                     if isinstance(value, (int, float)) and not isinstance(value, bool)
                 }
-                if numeric:
+                if numeric and item.cache_state in {"live", "validated-cache"}:
                     connection.execute(
                         """INSERT OR IGNORE INTO observations
-                           (provider, external_id, observed_at, metrics_json)
-                           VALUES (?, ?, ?, ?)""",
-                        (item.provider, item.external_id, isoformat(item.observed_at), json.dumps(numeric, sort_keys=True)),
+                           (provider, external_id, observed_at, metrics_json, measurement_kind)
+                           VALUES (?, ?, ?, ?, ?)""",
+                        (item.provider, item.external_id, isoformat(item.measurement_time), json.dumps(numeric, sort_keys=True), item.cache_state),
                     )
 
     def record_scan(
