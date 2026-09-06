@@ -8,6 +8,7 @@ from uuid import uuid4
 import logging
 import json
 import os
+import sqlite3
 import sys
 
 from youtube_trend_radar.config import ConfigError, load_config
@@ -29,6 +30,7 @@ from youtube_trend_radar.state import RadarState, render_brief
 from youtube_trend_radar.resolution import cluster_items
 from youtube_trend_radar.topics import attach_video_topics, partition_topicable_candidates
 from youtube_trend_radar.utils import compact_error
+from youtube_trend_radar.slack import SlackDelivery, validate_webhook
 
 
 LOGGER = logging.getLogger(__name__)
@@ -39,11 +41,12 @@ def _failed(name: str, now: datetime, exc: BaseException) -> ProviderResult:
     return ProviderResult(name, "failed", [], now, error=compact_error(exc))
 
 
-def run_scan(config_path: Path, *, top: int | None = None, no_youtube: bool = False) -> int:
+def run_scan(config_path: Path, *, top: int | None = None, no_youtube: bool = False, slack: bool = False) -> int:
     started = datetime.now(UTC)
     scan_id = uuid4().hex[:10]
     try:
         config = load_config(config_path)
+        delivery = SlackDelivery(config.database_path, validate_webhook(os.getenv("SLACK_WEBHOOK_URL"))) if slack else None
         if top is not None and top <= 0:
             raise ConfigError("--top must be positive")
         result_count = top or config.top_results
@@ -171,6 +174,8 @@ def run_scan(config_path: Path, *, top: int | None = None, no_youtube: bool = Fa
         brief['status'] = status
         _atomic_write(config.reports_path / 'latest.brief.md', render_brief(brief))
         _atomic_write(config.reports_path / 'latest.brief.json', json.dumps(brief, indent=2, ensure_ascii=False) + '\n')
+        if delivery:
+            delivery.enqueue(brief)
         state.acknowledge(brief)
         print(f"Changes: {config.reports_path / 'latest.brief.md'}")
         print(
@@ -179,7 +184,17 @@ def run_scan(config_path: Path, *, top: int | None = None, no_youtube: bool = Fa
         )
         print(f"Markdown: {markdown_path}")
         print(f"JSON: {json_path}")
+        if delivery:
+            try:
+                sent, pending = delivery.send_pending()
+                print(f"Slack: {sent} sent; {pending} pending")
+                if pending:
+                    print("Reports saved; Slack delivery pending. Retry with youtube-trend-radar notify.", file=sys.stderr)
+                    return 2
+            except (OSError, RuntimeError, sqlite3.Error):
+                print("Reports saved; Slack delivery failed. Retry with youtube-trend-radar notify.", file=sys.stderr)
+                return 2
         return 0
-    except (ConfigError, OSError, RuntimeError, ValueError) as exc:
+    except (ConfigError, OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
         print(f"scan failed: {compact_error(exc)}", file=sys.stderr)
         return 1

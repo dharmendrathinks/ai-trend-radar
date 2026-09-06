@@ -100,6 +100,34 @@ Both commands accept `--config path/to/config.toml`; decisions also accept `--no
 
 Reviewed items can reappear when source text changes (whitespace-only changes are ignored), event interest moves into a stronger band, or a watch item qualifies for the main list. These are deterministic triggers, not semantic novelty judgments. Deferred items stay quiet until their deadline even if evidence changes. An overdue item absent from the latest scan is labeled as not rechecked. The full discovery report continues to show current opportunities regardless of review state.
 
+### Optional Slack delivery
+
+Slack delivery is available on `main`; it is not included in the `v0.1.0` release. Each user connects their own Slack workspace:
+
+1. Create a channel for reports, such as `radar-daily`. You must belong to it if it is private.
+2. Open [Slack Apps](https://api.slack.com/apps), create a **Blank app** (or **From scratch**), name it, and select your workspace.
+3. In the app settings, open **Incoming Webhooks** and turn **Activate Incoming Webhooks** on.
+4. Click **Add New Webhook to Workspace**, choose your channel, and authorize it.
+5. Copy the generated URL into your local `.env` as `SLACK_WEBHOOK_URL=YOUR_REAL_WEBHOOK_URL`, preserving your other settings.
+
+See [Slack's setup guide](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/) for details. The CLI loads `.env` from its working directory; keep the URL out of TOML, command arguments, Git, and shared logs.
+
+```bash
+# Collect and save reports, then send the changes brief to your Slack channel.
+uv run youtube-trend-radar scan --slack
+
+# Send the latest saved brief and retry queued messages without another scan.
+uv run youtube-trend-radar notify
+```
+
+Both commands accept `--config`. Normal `scan` and `brief` commands never send Slack messages, even if the webhook is configured. For scheduled delivery, add `--slack` to your scheduler's scan command and set its working directory to the folder containing `.env`. A local schedule requires the machine to be available and online.
+
+Slack gets a compact changes brief with event IDs, source links, collection gaps, and overdue-item caveats. Empty briefs explicitly say there are no new qualifying changes. Messages show at most 14 new discoveries, three updates, and three reminders, with an explicit notice when more cards are available locally. Full reports, release notes, and YouTube results are not uploaded. Review/defer decisions remain local CLI commands.
+
+Delivery state lives in a separate SQLite file next to the configured database (`data/radar.slack.sqlite3` by default). It does not change the radar database schema. Each scan's message is queued before local acknowledgement; a failed send survives later scans and can be retried with `notify` or the next `scan --slack`. Network/server errors get up to three attempts; rate limits retain Slack's retry deadline. Confirmed sends are not resent for the same scan and webhook. Timeouts or a crash between Slack accepting a message and the local receipt can still cause duplicates; exactly-once delivery is not guaranteed.
+
+Only a hash of the webhook is stored in the outbox. Pending messages contain the compact brief; successful delivery removes that payload and retains a receipt. Changing the webhook creates a separate destination: pending messages for the old URL are not automatically forwarded to the new channel. Up to ten queued briefs are sent per invocation, oldest first. Exit code `2` means reports were saved but Slack delivery remains pending; `notify` also returns `2` while messages remain queued. Invalid setup or local errors return `1`.
+
 ### Event and input guarantees
 
 - Distinct releases have distinct event IDs; adding exact supporting evidence preserves the stored ID. Native GitHub release IDs distinguish recreated releases, and conflicting releases cannot be combined through a third item.
@@ -257,7 +285,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) before changing provider behavior, eligib
 - Presentation is English-oriented using a transparent Latin-script proxy, not full language identification.
 - Entity resolution and deduplication are intentionally conservative, so occasional duplicates are preferred over incorrect merges.
 - YouTube competition remains a manual judgment.
-- No dashboard, alerts, historical backfill, Reddit, X/Twitter, Google Trends, or paid trend provider is included.
+- Optional Slack briefs are the only notification integration. No dashboard, historical backfill, Reddit, X/Twitter, Google Trends, or paid trend provider is included.
 
 ## Source APIs and attribution
 

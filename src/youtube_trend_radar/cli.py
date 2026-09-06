@@ -16,6 +16,10 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--config", default="config.toml", help="TOML configuration path")
     scan.add_argument("--top", type=int, help="maximum number of Top Opportunities")
     scan.add_argument("--no-youtube", action="store_true", help="skip YouTube validation")
+    scan.add_argument("--slack", action="store_true", help="queue and send the changes brief to Slack")
+
+    notify = subparsers.add_parser("notify", help="send the latest saved brief and retry pending Slack delivery")
+    notify.add_argument("--config", default="config.toml")
 
     doctor = subparsers.add_parser("doctor", help="check configuration, storage, credentials, and connectivity")
     doctor.add_argument("--config", default="config.toml", help="TOML configuration path")
@@ -42,7 +46,27 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "scan":
         from youtube_trend_radar.pipeline import run_scan
 
-        return run_scan(Path(args.config), top=args.top, no_youtube=args.no_youtube)
+        return run_scan(Path(args.config), top=args.top, no_youtube=args.no_youtube, slack=args.slack)
+    if args.command == "notify":
+        import json
+        import os
+        import sqlite3
+        import sys
+        from youtube_trend_radar.config import load_config
+        from youtube_trend_radar.slack import SlackDelivery, validate_webhook
+        try:
+            webhook = validate_webhook(os.getenv("SLACK_WEBHOOK_URL"))
+            config = load_config(Path(args.config))
+            delivery = SlackDelivery(config.database_path, webhook)
+            brief_path = config.reports_path / "latest.brief.json"
+            if brief_path.is_file():
+                delivery.enqueue(json.loads(brief_path.read_text()))
+            sent, pending = delivery.send_pending()
+            print(f"Slack: {sent} sent; {pending} pending")
+            return 2 if pending else 0
+        except (OSError, ValueError, RuntimeError, sqlite3.Error, KeyError, TypeError):
+            print("Slack notification failed; check SLACK_WEBHOOK_URL, configuration, storage, and latest.brief.json", file=sys.stderr)
+            return 1
     if args.command in {"brief", "decide"}:
         from datetime import UTC, datetime
         import sys
