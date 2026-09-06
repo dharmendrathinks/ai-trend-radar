@@ -20,3 +20,5 @@ reports/
 # Local configuration may contain machine-specific paths.
 config.toml
 
+# Optional local experiment settings; shared defaults remain tracked.
+/experiments/release_extraction/experiment.local.toml

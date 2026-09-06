@@ -10,7 +10,7 @@ A local CLI for discovering promising AI and developer video topics from upstrea
 
 [Quick start](#quick-start) · [Slack setup](#optional-slack-delivery) · [Scheduling](#scheduled-runs) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting) · [Contributing](CONTRIBUTING.md)
 
-**Status:** alpha. This README describes `main`, including optional Slack delivery added after [v0.1.0](https://github.com/dharmendrathinks/youtube-trend-radar/releases/tag/v0.1.0). For that release's exact scope, see [RELEASE_NOTES.md](RELEASE_NOTES.md). [plan_v2.md](plan_v2.md) is a strategic review and roadmap, not a list of shipped capabilities.
+**Status:** alpha. This README describes `main`, including optional Slack delivery and a standalone extraction experiment added after [v0.1.0](https://github.com/dharmendrathinks/youtube-trend-radar/releases/tag/v0.1.0). For that release's exact scope, see [RELEASE_NOTES.md](RELEASE_NOTES.md). [plan_v2.md](plan_v2.md) is a strategic review and roadmap, not a list of shipped capabilities.
 
 ```text
 Official releases/changelogs + GitHub watchlist/exploration
@@ -401,10 +401,16 @@ Tests use fixtures and mocked HTTP responses; they do not require source credent
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before changing provider behavior, eligibility, or scoring.
 
+## Optional LLM extraction experiment
+
+The [shadow experiment](experiments/release_extraction/README.md) compares summary-input rules, complete-input rules, and evidence-constrained Codex extraction on the same captured releases. It includes authored controls, quote validation, a bounded model-call budget, saved outputs, and human review materials. Normal scans, rankings, Slack briefs, and schedules do not use its results.
+
+The model arm requires an explicit command and a local Codex login. It sends the selected notes to the model service; generated data remains in ignored local reports. This is a way to evaluate whether language understanding helps, not evidence that the model already improves recommendations.
+
 ## Current limitations
 
 - Deterministic heuristics require calibration against real use; they are not learned predictions.
-- No runtime LLM, semantic embedding model, or virality prediction is used. The proposed optional LLM extraction experiment is not implemented yet.
+- Normal scans use no runtime LLM, semantic embedding model, or virality prediction. The optional extraction experiment is separate and does not affect recommendations.
 - Growth is measured only after local tracking begins.
 - Provider availability, API quotas, upstream schemas, and feed quality constrain results.
 - Presentation is English-oriented using a transparent Latin-script proxy, not full language identification.
