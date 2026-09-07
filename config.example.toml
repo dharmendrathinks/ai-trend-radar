@@ -3,6 +3,18 @@ lookback_days = 7
 top_results = 10
 max_workers = 5
 
+# Optional: sends captured GitHub release notes to the model service using your
+# local Codex login. Confirm permission for every configured repository first.
+[llm]
+enabled = false
+model = "gpt-5.6-sol"
+reasoning_effort = "low"
+codex_binary = "codex" # Use an absolute path for schedulers with a minimal PATH.
+max_calls_per_scan = 24
+max_releases = 20
+timeout_seconds = 120
+max_input_chars = 20000
+
 [paths]
 database = "data/radar.sqlite3"
 reports = "reports"
@@ -13,7 +25,7 @@ cache_ttl_minutes = 30
 stale_if_error_hours = 48
 max_retries = 2
 retry_backoff_seconds = 0.5
-user_agent = "ai-trend-radar/0.1 (+https://github.com/dharmendrathinks/ai-trend-radar)"
+user_agent = "ai-trend-radar/0.2 (+https://github.com/dharmendrathinks/ai-trend-radar)"
 
 [[official.feeds]]
 name = "OpenAI News"

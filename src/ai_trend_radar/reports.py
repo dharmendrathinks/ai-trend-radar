@@ -14,7 +14,7 @@ from ai_trend_radar.ranking import SCORING_VERSION
 from ai_trend_radar.resolution import effective_item_time
 
 
-SCHEMA_VERSION = "2.0"
+SCHEMA_VERSION = "2.1"
 
 
 def _event_time_basis(candidate: Candidate) -> str:
@@ -82,6 +82,7 @@ def build_report(
     candidates: list[Candidate],
     release_watch: list[Candidate] | None = None,
     community_watch: list[Candidate] | None = None,
+    llm_updates: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     unavailable = [
         f"{result.provider}: {result.status}" + (f" ({result.error})" if result.error else "")
@@ -96,6 +97,7 @@ def build_report(
         "started_at": isoformat(started_at),
         "generated_at": isoformat(completed_at),
         "status": status,
+        "llm_updates": llm_updates or {"status": "disabled", "updates": []},
         "product_boundary": "YouTube evidence is not included in Discovery Priority; inspect it manually.",
         "provider_status": [result.status_dict() for result in provider_results],
         "effective_interest_thresholds": asdict(config.ranking.interest),
@@ -127,6 +129,35 @@ def _signal_time(signal: dict[str, Any]) -> str:
     return label
 
 
+def _llm_markdown(data: dict[str, Any]) -> list[str]:
+    lines = ["## LLM-discovered updates", ""]
+    if data["status"] == "disabled":
+        return [*lines, "Disabled. Enable with `scan --llm` or `[llm] enabled = true` (uses model allowance).", ""]
+    lines.extend([
+        f"Status: **{data['status']}** · Model: `{data['model']}` · New calls: {data['new_calls']} · Cached: {data['cached_results']} · Failed: {data['failures']} · Skipped: {data['skipped']} · Abstained: {data['abstentions']}",
+        "", "Model-generated suggestions from captured GitHub release notes, newest release first. Quotes are checked against the source text; interpretations still need human review. These do not change Discovery Priority, the review inbox, or Slack briefs and have no YouTube validation.", "",
+    ])
+    if not data["updates"]:
+        lines.extend(["No validated LLM-discovered updates available for this scan.", ""])
+    for release in data["updates"]:
+        for angle in release["angles"]:
+            lines.extend([f"### {angle['title']}", "",
+                f"Release: [{release['title']}]({release['source_url']}) · Published: {release['published_at'] or 'unknown'} · {'Cached extraction' if release['cached'] else 'New extraction'} · Source: {release['source_cache_state']}",
+                "", angle["developer_value"], "", "Source evidence:", ""])
+            for quote in angle["evidence_quotes"]:
+                lines.extend(["> " + quote.replace("\r\n", "\n").replace("\n", "\n> "), ""])
+            if angle["caveats"]:
+                lines.extend(["Caveats:", "", *[f"- {caveat}" for caveat in angle["caveats"]], ""])
+    if data["failures"] or data["skipped"] or data["warnings"]:
+        lines.extend(["Extraction limitations (regular results remain available):", ""])
+        for entry in data["releases"]:
+            if entry.get("status") in {"failed", "skipped"}:
+                reason = entry.get("reason") or "; ".join(entry.get("errors", []))
+                lines.append(f"- [{entry['title']}]({entry['source_url']}): {entry['status']} — {reason}")
+        lines.extend([*[f"- {warning}" for warning in data["warnings"]], ""])
+    return lines
+
+
 def render_markdown(report: dict[str, Any]) -> str:
     lines = [
         "# AI Trend Radar",
@@ -136,6 +167,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         "",
         f"> {report['product_boundary']}",
         "",
+        *_llm_markdown(report.get("llm_updates", {"status": "disabled", "updates": []})),
         "## Provider status",
         "",
         "| Provider | Status | Items | Requests | Detail |",

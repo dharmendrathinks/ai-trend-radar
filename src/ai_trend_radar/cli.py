@@ -17,6 +17,9 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--top", type=int, help="maximum number of Top Opportunities")
     scan.add_argument("--no-youtube", action="store_true", help="skip YouTube validation")
     scan.add_argument("--slack", action="store_true", help="queue and send the changes brief to Slack")
+    llm = scan.add_mutually_exclusive_group()
+    llm.add_argument("--llm", dest="llm", action="store_true", default=None, help="extract supplemental release updates with Codex (uses model allowance)")
+    llm.add_argument("--no-llm", dest="llm", action="store_false", help="disable model extraction for this scan")
 
     notify = subparsers.add_parser("notify", help="send the latest saved brief and retry pending Slack delivery")
     notify.add_argument("--config", default="config.toml")
@@ -56,7 +59,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "scan":
         from ai_trend_radar.pipeline import run_scan
 
-        return run_scan(Path(args.config), top=args.top, no_youtube=args.no_youtube, slack=args.slack)
+        return run_scan(Path(args.config), top=args.top, no_youtube=args.no_youtube, slack=args.slack, llm=args.llm)
     if args.command == "notify":
         import json
         import os

@@ -14,3 +14,8 @@ Include the affected version or commit, impact, reproduction conditions, and any
 
 For accidentally exposed third-party API credentials, revoke or rotate the credential with the provider immediately; a source-code fix alone does not invalidate a leaked token.
 
+## Optional model extraction
+
+`scan --llm` or `[llm] enabled = true` sends selected captured GitHub release notes to the model service using the operator's Codex login. Confirm permission before enabling it for private repositories. Release notes are treated as untrusted input; the adapter disables tools and project instructions, uses a temporary read-only working directory, and excludes source/Slack credentials from the child environment. Literal-quote validation does not establish factual correctness of generated interpretations.
+
+Local LLM cache files (by default `data/radar.llm/`) contain source notes, model output, and extraction metadata. Keep these and live reports out of public commits. Disabling extraction does not erase existing cache data. Cached failures are not retried until the relevant cache entry is moved aside or extraction inputs change.

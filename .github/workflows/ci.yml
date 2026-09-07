@@ -32,3 +32,9 @@ jobs:
       - name: Build package
         run: uv build
 
+      - name: Check installed wheel and LLM assets
+        shell: bash
+        run: |
+          wheels=(dist/*.whl)
+          uv run --isolated --no-project --with "${wheels[0]}" python -c 'from ai_trend_radar.llm_adapter import HERE, validate_model; assert (HERE / "prompt.md").is_file(); assert validate_model({"angles": [], "abstain_reason": "Smoke check"}, {"notes": ""}) == ([], [])'
+          uv run --isolated --no-project --with "${wheels[0]}" ai-trend-radar scan --help

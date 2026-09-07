@@ -13,6 +13,7 @@ import sys
 
 from ai_trend_radar.config import ConfigError, load_config
 from ai_trend_radar.db import Database
+from ai_trend_radar.enrichment import discover_updates
 from ai_trend_radar.http import CachedHttpClient
 from ai_trend_radar.models import ProviderResult
 from ai_trend_radar.providers import github, hackernews, huggingface, official, youtube
@@ -41,7 +42,7 @@ def _failed(name: str, now: datetime, exc: BaseException) -> ProviderResult:
     return ProviderResult(name, "failed", [], now, error=compact_error(exc))
 
 
-def run_scan(config_path: Path, *, top: int | None = None, no_youtube: bool = False, slack: bool = False) -> int:
+def run_scan(config_path: Path, *, top: int | None = None, no_youtube: bool = False, slack: bool = False, llm: bool | None = None) -> int:
     started = datetime.now(UTC)
     scan_id = uuid4().hex[:10]
     try:
@@ -137,6 +138,9 @@ def run_scan(config_path: Path, *, top: int | None = None, no_youtube: bool = Fa
         youtube_result = youtube.validate(selected, config, youtube_client, started, disabled=no_youtube)
         provider_results.append(youtube_result)
 
+        llm_updates = discover_updates(eligible, config, enabled=config.llm.enabled if llm is None else llm)
+        LOGGER.info("LLM: %s (%d releases, %d new calls, %d cached)", llm_updates["status"],
+                    len(llm_updates["updates"]), llm_updates["new_calls"], llm_updates["cached_results"])
         completed = datetime.now(UTC)
         discovery_partial = any(result.status in {"failed", "partial", "stale"} for result in provider_results[:-1])
         youtube_requested = bool(config.youtube.get("enabled", True)) and not no_youtube
@@ -153,6 +157,7 @@ def run_scan(config_path: Path, *, top: int | None = None, no_youtube: bool = Fa
             candidates=selected,
             release_watch=release_watch,
             community_watch=community_watch,
+            llm_updates=llm_updates,
         )
         markdown_path, json_path = write_reports(report, config.reports_path)
         database.record_scan(

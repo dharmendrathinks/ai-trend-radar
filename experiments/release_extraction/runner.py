@@ -8,16 +8,17 @@ from hashlib import sha256
 import inspect
 import io
 import json
-import os
 from pathlib import Path
 import shutil
 import sqlite3
 import subprocess
-import tempfile
-import time
 import tomllib
 from typing import Any
 
+from ai_trend_radar.llm_adapter import (
+    DISABLED_FEATURES, HERE as ADAPTER_ASSETS, model_result, validate_model,
+)
+from ai_trend_radar import llm_adapter
 from ai_trend_radar.config import load_config
 from ai_trend_radar.models import Candidate, SourceItem
 from ai_trend_radar.reports import _atomic_write
@@ -27,13 +28,6 @@ from ai_trend_radar.utils import clean_text
 HERE = Path(__file__).resolve().parent
 ARMS = ("rules_summary", "rules_full", "codex")
 REVIEW_FIELDS = ["case_id", "slot", "angle", "title", "supported", "useful", "caveats_preserved", "notes"]
-DISABLED_FEATURES = (
-    "shell_tool", "unified_exec", "apps", "plugins", "hooks", "memories",
-    "browser_use", "browser_use_external", "in_app_browser", "computer_use",
-    "image_generation", "view_image", "multi_agent", "multi_agent_v2",
-    "code_mode", "code_mode_host", "goals", "skill_search", "skill_mcp_dependency_install",
-    "sleep_tool", "in_app_local_automation",
-)
 
 
 def digest(value: Any) -> str:
@@ -156,121 +150,15 @@ def rule_result(evidence: dict[str, Any], full: bool) -> dict[str, Any]:
     return {"angles": angles, "abstain_reason": topic["fallback_reason"] or "", "raw_topic": topic,
             "quote_comparison": "rules normalize HTML/whitespace before extraction; model quotes must match literal captured text"}
 
-
-def validate_schema(value: Any, schema: dict[str, Any]) -> None:
-    kind = schema["type"]
-    if kind == "object":
-        if not isinstance(value, dict) or set(value) != set(schema["required"]):
-            raise ValueError("Response fields do not match the schema")
-        for key, child in value.items():
-            validate_schema(child, schema["properties"][key])
-    elif kind == "array":
-        if not isinstance(value, list) or not schema.get("minItems", 0) <= len(value) <= schema.get("maxItems", 999):
-            raise ValueError("Response array exceeds schema bounds")
-        for child in value:
-            validate_schema(child, schema["items"])
-    elif kind == "string":
-        if not isinstance(value, str) or not schema.get("minLength", 0) <= len(value) <= schema.get("maxLength", 99999):
-            raise ValueError("Response string does not match schema bounds")
-    else:
-        raise ValueError("Unsupported schema type")
-
-
-def validate_model(response: Any, evidence: dict[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
-    validate_schema(response, read(HERE / "response.schema.json"))
-    if bool(response["angles"]) == bool(response["abstain_reason"].strip()):
-        raise ValueError("Abstention reason must be present only when there are no angles")
-    checks = []
-    for angle in response["angles"]:
-        for quote in angle["evidence_quotes"]:
-            start = evidence["notes"].find(quote)
-            checks.append({"matched": start >= 0, "start": start if start >= 0 else None,
-                           "end": start + len(quote) if start >= 0 else None})
-    return checks, ([] if all(c["matched"] for c in checks) else ["One or more evidence quotes are not literal source spans"])
-
-
-def codex_command(binary: str, directory: Path, config: dict[str, Any]) -> list[str]:
-    command = [binary, "exec", "--ignore-user-config", "--ephemeral", "--skip-git-repo-check",
-               "--sandbox", "read-only", "--cd", str(directory), "--model", config["model"],
-               "--json", "--output-schema", str(HERE / "response.schema.json"),
-               "--output-last-message", str(directory / "response.json"),
-               "-c", 'approval_policy="never"', "-c", 'web_search="disabled"',
-               "-c", "project_doc_max_bytes=0", "-c", "skills.bundled.enabled=false",
-               "-c", "model_reasoning_effort=" + json.dumps(config["reasoning_effort"])]
-    for feature in DISABLED_FEATURES:
-        command.extend(["--disable", feature])
-    return [*command, "-"]
-
-
-def model_result(evidence: dict[str, Any], config: dict[str, Any], binary: str) -> dict[str, Any]:
-    # Do not load .env or inherit discovery/Slack tokens. CLI reuses its own login.
-    allowed = {"PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "CODEX_HOME", "SYSTEMROOT", "WINDIR",
-               "APPDATA", "LOCALAPPDATA", "SSL_CERT_FILE", "SSL_CERT_DIR"}
-    env = {key: value for key, value in os.environ.items() if key.upper() in allowed}
-    supplied = {key: evidence[key] for key in ("title", "repository", "tag", "source_url", "notes")}
-    prompt = (HERE / "prompt.md").read_text() + "\n\nUNTRUSTED RELEASE EVIDENCE (JSON):\n" + json.dumps(supplied, ensure_ascii=False)
-    started = time.monotonic()
-    record: dict[str, Any] = {"status": "failed", "response": None, "quote_checks": [], "errors": [],
-                              "usage": None, "tool_items": [], "diagnostic_items": [], "turn_completed": False,
-                              "elapsed_seconds": None}
-    with tempfile.TemporaryDirectory(prefix="radar-extraction-") as temporary:
-        directory = Path(temporary)
-        try:
-            process = subprocess.run(codex_command(binary, directory, config), input=prompt, text=True,
-                                     capture_output=True, cwd=directory, env=env, timeout=config["timeout_seconds"])
-        except subprocess.TimeoutExpired:
-            record["errors"] = ["Codex timeout; not retried automatically"]
-        else:
-            record["exit_code"] = process.returncode
-            # Raw stderr can include account/environment detail. Keep only a hash.
-            record["stderr_sha256"] = sha256(process.stderr.encode()).hexdigest()
-            for line in process.stdout.splitlines():
-                try:
-                    event = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if event.get("type") == "turn.completed":
-                    record["usage"] = event.get("usage")
-                    record["turn_completed"] = True
-                elif event.get("type") in {"turn.failed", "error"}:
-                    record["errors"].append("Codex reported a failed turn or execution error")
-                item = event.get("item", {})
-                if item.get("type") == "error":
-                    record["diagnostic_items"].append({"type": "error", "message_sha256": digest(item.get("message"))})
-                elif item.get("type") and item["type"] not in {"agent_message", "reasoning"}:
-                    record["tool_items"].append(item["type"])
-            output = directory / "response.json"
-            if process.returncode:
-                record["errors"].append(f"Codex exited {process.returncode}; output is not a valid completed extraction")
-            if not record["turn_completed"]:
-                record["errors"].append("No completed-turn event was recorded")
-            if record["tool_items"]:
-                record["errors"].append("Tool activity detected; excluded from the no-tools comparison")
-            if output.is_file():
-                try:
-                    record["response"] = read(output)
-                    checks, errors = validate_model(record["response"], evidence)
-                    record["quote_checks"] = checks
-                    record["errors"].extend(errors)
-                except (ValueError, TypeError, KeyError):
-                    record["raw_output"] = output.read_text()
-                    record["errors"].append("Response failed JSON/schema/abstention validation")
-            else:
-                record["errors"].append("No structured response was produced")
-            if not record["errors"]:
-                record["status"] = "valid"
-    record["elapsed_seconds"] = round(time.monotonic() - started, 3)
-    return record
-
-
 def run(work: Path, config: dict[str, Any], with_codex: bool) -> None:
     manifest = read(work / "manifest.json")
     binary = shutil.which("codex") if with_codex else None
     if with_codex and not binary:
         raise ValueError("Install and log in to Codex CLI first, or run without --codex")
     version = subprocess.check_output([binary, "--version"], text=True).strip() if binary else None
-    identity = {"settings": config, "codex_version": version, "prompt_sha256": digest((HERE / "prompt.md").read_text()),
-                "schema_sha256": digest(read(HERE / "response.schema.json")),
+    identity = {"settings": config, "codex_version": version, "prompt_sha256": digest((ADAPTER_ASSETS / "prompt.md").read_text()),
+                "schema_sha256": digest(read(ADAPTER_ASSETS / "response.schema.json")),
+                "adapter_sha256": digest(inspect.getsource(llm_adapter)),
                 "extractor_version": topics.EXTRACTION_VERSION, "extractor_sha256": digest(inspect.getsource(topics)),
                 "runner_sha256": digest(Path(__file__).read_text()), "model_requested": config["model"],
                 "resolved_model_snapshot": None, "disabled_features": list(DISABLED_FEATURES)}
@@ -285,8 +173,8 @@ def run(work: Path, config: dict[str, Any], with_codex: bool) -> None:
         raise ValueError("Experiment settings/code changed; use a new work directory to avoid mixing results")
     write(settings_file, identity)
     _atomic_write(work / "runner.used.py", Path(__file__).read_text())
-    _atomic_write(work / "prompt.used.md", (HERE / "prompt.md").read_text())
-    write(work / "schema.used.json", read(HERE / "response.schema.json"))
+    _atomic_write(work / "prompt.used.md", (ADAPTER_ASSETS / "prompt.md").read_text())
+    write(work / "schema.used.json", read(ADAPTER_ASSETS / "response.schema.json"))
     previous_calls = sum(read(path).get("arms", {}).get("codex", {}).get("status") in {"valid", "failed"}
                          for path in (work / "results").glob("*.json"))
     calls = 0

@@ -6,11 +6,11 @@
 
 A local CLI for discovering promising AI and developer video topics from upstream releases and developer activity.
 
-`ai-trend-radar` watches upstream ecosystem events, ranks the ones worth investigating, and attaches recent YouTube evidence for manual coverage review. It is built for technical creators and researchers deciding what to investigate or cover next, including projects outside their watchlists. It is deterministic, runs without an LLM, and does **not** claim to predict virality or demonstrate a measured early-detection advantage.
+`ai-trend-radar` watches upstream ecosystem events, ranks the ones worth investigating, and attaches recent YouTube evidence for manual coverage review. It is built for technical creators and researchers deciding what to investigate or cover next, including projects outside their watchlists. Ranking is deterministic and works without an LLM. Optional model extraction adds a separate, first-in-report **LLM-discovered updates** section. The radar does **not** claim to predict virality or demonstrate a measured early-detection advantage.
 
 [Quick start](#quick-start) · [Slack setup](#optional-slack-delivery) · [Scheduling](#scheduled-runs) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting) · [Contributing](CONTRIBUTING.md)
 
-**Status:** alpha. This README describes the current source, including optional Slack delivery and a standalone extraction experiment added after [v0.1.0](https://github.com/dharmendrathinks/ai-trend-radar/releases/tag/v0.1.0). For that release's exact scope, see [RELEASE_NOTES.md](RELEASE_NOTES.md). [plan_v2.md](plan_v2.md) is a strategic review and roadmap, not a list of shipped capabilities.
+**Status:** alpha; v0.2.0 source, release publication pending. This version adds optional LLM-discovered updates to normal reports, alongside Slack delivery and the standalone extraction evaluation harness. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for scope and migration details. [plan_v2.md](plan_v2.md) is a strategic review and roadmap, not a list of shipped capabilities.
 
 Previously named **YouTube Trend Radar**. Current source installs the `ai-trend-radar` command and `ai_trend_radar` Python package; the old command and import names are no longer provided. For an existing checkout, update `origin` to `git@github.com:dharmendrathinks/ai-trend-radar.git`, then run `uv sync --locked --extra dev` and update scheduled commands. You can keep your checkout's existing folder name and reuse its configuration, databases, and reports. Published v0.1.0 artifacts retain the original names.
 
@@ -32,6 +32,11 @@ YouTube evidence never affects Discovery Priority. The radar does not calculate 
 Illustrative summary with fictional projects and scores, not a live scan or an exact rendering:
 
 ```text
+LLM-discovered updates (when enabled)
+
+Example Local Runtime: image and audio input
+   Source quote, release link, developer value, and caveats
+
 Top Opportunities — 2 found
 
 1. Example Coding Agent: background task execution
@@ -87,6 +92,12 @@ uv run ai-trend-radar scan --no-youtube
 # Request at most five Top Opportunities. The floor may return fewer.
 uv run ai-trend-radar scan --top 5
 
+# Add model-extracted release updates at the top of the full report.
+uv run ai-trend-radar scan --llm
+
+# Override local LLM configuration for one deterministic-only scan.
+uv run ai-trend-radar scan --no-llm
+
 # Use a configuration outside the repository root.
 uv run ai-trend-radar scan --config path/to/config.toml
 ```
@@ -96,7 +107,7 @@ Successful scans write these files by default:
 | File | Use |
 |---|---|
 | `reports/latest.brief.md` / `.json` | New discoveries, material updates, and due reminders from the latest scan |
-| `reports/latest.md` / `.json` | Full latest report, including Release Watch, Community Watch, and provider status |
+| `reports/latest.md` / `.json` | Full latest report: LLM-discovered updates first, then provider status, Top Opportunities, and watch lists |
 | `reports/scan-*.md` / `.json` | Uniquely named full reports from individual scans |
 | `data/radar.sqlite3` | Observations, cache, event history, growth checkpoints, and review decisions |
 | `data/radar.slack.sqlite3` | Slack delivery outbox and receipts, created only when Slack is used |
@@ -223,7 +234,7 @@ Full source text is local data in SQLite and JSON reports, just like the existin
 
 The application applies an additive, idempotent SQLite migration on the next run. Existing source items, scans, and metric history are retained. Old metric observations lack cache provenance, so they are labeled `legacy` and excluded from new measured-growth baselines. New growth checkpoints begin with a verified response; do not interpret that initial warm-up as a lack of project activity.
 
-Old reports keep their original identities. New reports use schema `2.0`, corrected scoring `v1.1`, and deterministic extraction `release-topic-v1.2`. `event_id` is the durable review key; `fingerprint` remains an alias for compatibility. Review state starts with the new event ledger. Unsupported future database versions are rejected.
+Old reports keep their original identities. New reports use schema `2.1` (adds `llm_updates`), corrected scoring `v1.1`, and deterministic extraction `release-topic-v1.2`. The local database remains schema 2. `event_id` is the durable review key; `fingerprint` remains an alias for compatibility. Review state starts with the new event ledger. Unsupported future database versions are rejected.
 
 ### Updating and keeping state
 
@@ -429,16 +440,32 @@ Tests use fixtures and mocked HTTP responses; they do not require source credent
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before changing provider behavior, eligibility, or scoring.
 
-## Optional LLM extraction experiment
+## Optional LLM-discovered updates
 
-The [shadow experiment](experiments/release_extraction/README.md) compares summary-input rules, complete-input rules, and evidence-constrained Codex extraction on the same captured releases. It includes authored controls, quote validation, a bounded model-call budget, saved outputs, and human review materials. Normal scans, rankings, Slack briefs, and schedules do not use its results.
+Run `uv run ai-trend-radar scan --llm` after installing and logging into a compatible Codex CLI. The adapter has been tested with `codex-cli 0.153.4`. It uses your local Codex login and model allowance, not an OpenAI API key. The shared example is disabled by default; existing configs without `[llm]` keep their deterministic behavior.
+
+For regular and scheduled scans, add the `[llm]` section from `config.example.toml` to your local `config.toml` and set `enabled = true`. Set `codex_binary` to its absolute path if your scheduler cannot find it. `--llm` and `--no-llm` override configuration for one scan. No scheduler command change is otherwise needed.
+
+The first report section shows model-generated capability titles, developer value, original release links, publication dates, exact source quotes, and caveats. It reads eligible GitHub releases **before** deterministic topicability, freshness-floor, and top-N presentation gates. Releases are newest-first; this is not an LLM ranking or a claim that every suggestion is new to you. Duplicate topics can occur across releases or between sections. Suggestions do not enter the review inbox, change scores, receive YouTube validation, or appear in the Slack changes brief.
+
+Defaults bound each scan to 20 complete releases, 24 new model calls, 20,000 input characters per release, and 120 seconds per call. Calls are sequential and stop after three consecutive new-call failures. Large/incomplete inputs and capped releases are skipped with reasons; no truncation or automatic repair is used. A first scan may take several minutes and consume model allowance. Quote matching proves the quoted text exists, not that the model's interpretation is correct.
+
+Unchanged inputs reuse results in `data/radar.llm/` (derived from the configured database filename). Keys include release identity and notes, model/effort, and adapter/prompt/schema hashes, not observation timestamps. Valid results, abstentions, and failures are cached. To retry a failed extraction after fixing login or upgrading Codex, move its `<cache_key>.json` out of this directory; the report JSON records that key. Keep cache files private: they contain captured notes and model output. Simultaneous scans are not coordinated and may duplicate calls.
+
+Model, executable, or cache problems are disclosed separately under `llm_updates.status`; the ordinary provider/scan status still describes deterministic discovery. The normal report remains available on model failure. Disabling LLM use needs no credentials and performs no model calls.
+
+Enabling this feature sends selected GitHub release notes to the model service. Confirm permission for all configured repositories, including any private repositories reachable with your GitHub token. YouTube and other provider content are not sent. The adapter uses a temporary working directory, read-only execution, disabled tools, no project instructions, and an allowlisted environment that excludes source API tokens and Slack secrets.
+
+### Extraction evaluation harness
+
+The [shadow experiment](experiments/release_extraction/README.md) compares summary-input rules, complete-input rules, and evidence-constrained Codex extraction on the same captured releases. It shares the packaged adapter and includes authored controls, quote validation, a bounded model-call budget, saved outputs, and human review materials. Its saved evaluation results are not automatically imported into normal scans.
 
 The model arm requires an explicit command and a local Codex login. It sends the selected notes to the model service; generated data remains in ignored local reports. This is a way to evaluate whether language understanding helps, not evidence that the model already improves recommendations.
 
 ## Current limitations
 
 - Deterministic heuristics require calibration against real use; they are not learned predictions.
-- Normal scans use no runtime LLM, semantic embedding model, or virality prediction. The optional extraction experiment is separate and does not affect recommendations.
+- Model extraction is optional and limited to captured GitHub release notes; it is not semantic clustering or virality prediction. Its suggestions require human review and do not change deterministic recommendations.
 - Growth is measured only after local tracking begins.
 - Provider availability, API quotas, upstream schemas, and feed quality constrain results.
 - Presentation is English-oriented using a transparent Latin-script proxy, not full language identification.

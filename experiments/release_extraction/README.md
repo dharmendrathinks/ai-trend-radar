@@ -1,6 +1,6 @@
 # Release extraction shadow experiment
 
-Compare three extraction methods on the same saved releases before deciding whether an LLM belongs in Radar's topic workflow. This is a standalone, opt-in experiment: it does not alter scores, topicability gates, review decisions, reports from normal scans, the Slack brief, or your schedule.
+Compare three extraction methods on the same saved releases. This standalone, opt-in evaluation harness shares the packaged adapter with normal scans, but its saved outputs do not alter scores, topicability gates, review decisions, normal reports, the Slack brief, or your schedule. For the shipped optional report section, see the [normal-scan guide](../../README.md#optional-llm-discovered-updates). The shared prompt and response schema live in `src/ai_trend_radar/llm_assets/`; edit them there, not in this directory.
 
 | Arm | Input and method |
 |---|---|
@@ -45,7 +45,7 @@ uv run python experiments/release_extraction/runner.py report \
 
 If you have no saved scans yet, add `--controls-only --config config.example.toml` to `prepare`. Otherwise, `--config` chooses the Radar configuration containing the database path and topic-rule settings. It does not start a scan.
 
-For a fresh scan followed by LLM review, first run `uv run ai-trend-radar scan` and add `--scan-id latest` to the preparation command. This selects only GitHub releases observed during that completed scan, plus the eight controls. The manifest records the scan ID. The scan itself does not invoke the model or send Slack messages unless `--slack` is supplied. Run the explicit `--codex` and `report` steps above to produce the comparison.
+For a fresh scan followed by LLM review, first run `uv run ai-trend-radar scan --no-llm` and add `--scan-id latest` to the preparation command. This selects only GitHub releases observed during that completed scan, plus the eight controls. The manifest records the scan ID. `--no-llm` prevents model calls even when local configuration enables them. The scan sends no Slack messages unless `--slack` is supplied. Run the explicit `--codex` and `report` steps above to produce the comparison.
 
 Prepare immediately after the scan: stored source items are updated in place, so `--scan-id` accepts only the latest completed scan's ID or `latest`. Seeing a release in a new scan does not make it an unseen evaluation case; compare its source URL against prior pilots before calling it a holdout.
 
