@@ -1,12 +1,12 @@
 # Contributing
 
-Thanks for helping improve YouTube Trend Radar. Keep contributions focused, explainable, and easy to verify.
+Thanks for helping improve AI Trend Radar. Keep contributions focused, explainable, and easy to verify.
 
 ## Setup
 
 ```bash
-git clone https://github.com/dharmendrathinks/youtube-trend-radar.git
-cd youtube-trend-radar
+git clone https://github.com/dharmendrathinks/ai-trend-radar.git
+cd ai-trend-radar
 cp config.example.toml config.toml
 cp .env.example .env
 uv sync --extra dev
@@ -21,7 +21,7 @@ uv run pytest
 uv build
 ```
 
-For changes involving live providers, also run `uv run youtube-trend-radar doctor` and an appropriate opt-in smoke test. Never include credentials, `.env`, `config.toml`, local databases, caches, or generated live reports in a commit or issue.
+For changes involving live providers, also run `uv run ai-trend-radar doctor` and an appropriate opt-in smoke test. Never include credentials, `.env`, `config.toml`, local databases, caches, or generated live reports in a commit or issue.
 
 Pull requests should:
 

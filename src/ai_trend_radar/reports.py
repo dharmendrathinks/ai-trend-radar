@@ -8,10 +8,10 @@ import json
 import os
 import tempfile
 
-from youtube_trend_radar.config import AppConfig
-from youtube_trend_radar.models import Candidate, ProviderResult, isoformat
-from youtube_trend_radar.ranking import SCORING_VERSION
-from youtube_trend_radar.resolution import effective_item_time
+from ai_trend_radar.config import AppConfig
+from ai_trend_radar.models import Candidate, ProviderResult, isoformat
+from ai_trend_radar.ranking import SCORING_VERSION
+from ai_trend_radar.resolution import effective_item_time
 
 
 SCHEMA_VERSION = "2.0"
@@ -129,7 +129,7 @@ def _signal_time(signal: dict[str, Any]) -> str:
 
 def render_markdown(report: dict[str, Any]) -> str:
     lines = [
-        "# YouTube Trend Radar",
+        "# AI Trend Radar",
         "",
         f"Generated: {report['generated_at']}",
         f"Scan: `{report['scan_id']}` · Status: **{report['status']}** · Scoring: `{report['scoring_version']}`",
@@ -145,6 +145,11 @@ def render_markdown(report: dict[str, Any]) -> str:
         detail = provider.get("error") or (f"stale as of {provider['stale_as_of']}" if provider.get("stale_as_of") else "—")
         safe_detail = str(detail).replace("|", "\\|")
         lines.append(f"| {provider['provider']} | {provider['status']} | {provider['item_count']} | {provider['request_count']} | {safe_detail} |")
+
+    for provider in report["provider_status"]:
+        tracking = provider.get("details", {}).get("established_tracking")
+        if tracking:
+            lines.extend(["", f"Established repository follow-up: {tracking['active']}/{tracking['limit']} slots; {tracking['sampled']} samples returned this scan (may include cached/stale data). Recent activity starts observation, not a trend claim. Qualifying measured growth appears as its own event."])
 
     lines.extend(["", f"## Top Opportunities — {len(report['recommendations'])} found", ""])
     if not report["recommendations"]:

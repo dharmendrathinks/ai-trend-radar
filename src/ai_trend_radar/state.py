@@ -9,10 +9,10 @@ from urllib.parse import urlsplit
 import json
 import re
 
-from youtube_trend_radar.db import Database
-from youtube_trend_radar.models import Candidate, SourceItem, isoformat
-from youtube_trend_radar.resolution import occurrence_key
-from youtube_trend_radar.utils import normalize_url
+from ai_trend_radar.db import Database
+from ai_trend_radar.models import Candidate, SourceItem, isoformat
+from ai_trend_radar.resolution import occurrence_key
+from ai_trend_radar.utils import normalize_url
 
 STATE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS radar_events (
@@ -200,6 +200,8 @@ class RadarState:
         with self.database.connect() as cx:
             for name in ('new', 'updated', 'due'):
                 for item in brief[name]:
+                    cx.execute('INSERT OR IGNORE INTO brief_presentations(event_id,revision,presented_at) VALUES (?,?,?)',
+                               (item['event_id'], item['revision'], brief['generated_at']))
                     cx.execute("UPDATE radar_events SET briefed_revision=MAX(briefed_revision,?) WHERE event_id=? AND revision=?",
                                (item['revision'], item['event_id'], item['revision']))
                     if item.get('decision') in {'deferred', 'reopen'}:
@@ -230,7 +232,7 @@ class RadarState:
 
 
 def render_brief(brief: dict[str, Any]) -> str:
-    lines = ['# YouTube Trend Radar — Changes', '', f"Generated: {brief['generated_at']} · Scan: {brief['scan_id'] or 'none'}", '']
+    lines = ['# AI Trend Radar — Changes', '', f"Generated: {brief['generated_at']} · Scan: {brief['scan_id'] or 'none'}", '']
     problems = [p for p in brief.get('provider_status', []) if p['status'] in {'failed', 'partial', 'stale'}]
     if problems:
         lines.extend(['Collection gaps: ' + ', '.join(f"{p['provider']} ({p['status']})" for p in problems) + '. Discovery coverage is incomplete.', ''])
@@ -249,7 +251,8 @@ def render_brief(brief: dict[str, Any]) -> str:
             if item['disposition'] != 'main':
                 lines.extend(['Reminder only; this item does not currently qualify for the main list.', ''])
             lines.extend(f'- {url}' for url in c['source_links'])
-            lines.extend(['', f"Review: `youtube-trend-radar decide {item['event_id']} reviewed`", '',
-                          f"Defer: `youtube-trend-radar decide {item['event_id']} deferred --until <ISO timestamp with timezone>`", ''])
+            lines.extend(['', f"Review: `ai-trend-radar decide {item['event_id']} reviewed`", '',
+                          f"Feedback: `ai-trend-radar feedback {item['event_id']} investigate --known no --revision {item['revision']}` (or `brief` / `skip`; awareness `yes` / `no` / `unknown`).", '',
+                          f"Defer: `ai-trend-radar decide {item['event_id']} deferred --until <ISO timestamp with timezone>`", ''])
     lines.extend(['Unchanged previously presented items are omitted. The full scan report retains discovery and watch lists.', ''])
     return '\n'.join(lines)

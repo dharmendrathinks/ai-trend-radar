@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import importlib.util
+import csv
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 import subprocess
 
@@ -162,3 +164,81 @@ def test_changed_rules_cannot_be_mixed_with_cached_model_setup(prepared, monkeyp
     monkeypatch.setattr(experiment.subprocess, "check_output", lambda *a, **kw: "codex-test")
     with pytest.raises(ValueError, match="setup changed"):
         experiment.run(work, changed, True)
+
+
+def test_report_adds_later_model_rows_and_preserves_human_labels(prepared, monkeypatch):
+    work, config = prepared
+    experiment.run(work, config, False)
+    experiment.report(work)
+    review = work / "review.csv"
+    with review.open(newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    rows[0].update(supported="yes", useful="uncertain", caveats_preserved="yes", notes="Keep my review, including commas.\nSecond line.")
+    labeled = dict(rows[0])
+    with review.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=experiment.REVIEW_FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
+    monkeypatch.setattr(experiment.shutil, "which", lambda _: "/test/codex")
+    monkeypatch.setattr(experiment.subprocess, "check_output", lambda *a, **kw: "codex-test")
+    monkeypatch.setattr(experiment, "model_result", lambda *a: {
+        "status": "valid", "response": {"angles": [], "abstain_reason": "Mock abstention"},
+        "errors": [], "quote_checks": [], "usage": {}, "elapsed_seconds": 0,
+    })
+    experiment.run(work, config, True)
+    experiment.report(work)
+    first = review.read_bytes()
+    experiment.report(work)
+    assert review.read_bytes() == first
+    with review.open(newline="") as handle:
+        updated = list(csv.DictReader(handle))
+    assert labeled in updated
+    assert len(updated) == len(rows) + 8
+    mapping = experiment.read(work / "blind-key.json")
+    assert sum(mapping[row["case_id"]][row["slot"]] == "codex" for row in updated) == 8
+
+
+def test_review_rejects_changed_output_without_overwriting_labels(tmp_path):
+    path = tmp_path / "review.csv"
+    row = dict(zip(experiment.REVIEW_FIELDS, ["case", "A", 1, "Original title", "yes", "yes", "yes", "My note"]))
+    experiment.update_review(path, [row])
+    before = path.read_bytes()
+    with pytest.raises(ValueError, match="option changed"):
+        experiment.update_review(path, [dict(row, title="Different claim")])
+    assert path.read_bytes() == before
+
+
+def test_prepare_latest_scan_excludes_old_storage_and_accepts_schema_two(tmp_path):
+    from ai_trend_radar.db import Database
+    from ai_trend_radar.models import ProviderResult, SourceItem
+
+    app_config = tmp_path / "config.toml"
+    app_config.write_text((ROOT / "config.example.toml").read_text().replace('database = "data/radar.sqlite3"', 'database = "radar.sqlite3"'))
+    database = Database(tmp_path / "radar.sqlite3")
+    database.initialize()
+    now = datetime.now(UTC)
+    for key, when in (("old", now - timedelta(days=1)), ("new", now)):
+        notes = "## Features\n- Adds an API for exporting agent traces."
+        item = SourceItem("github_watched", key, "github", "github_release", f"Agent {key}", notes,
+                          f"https://github.com/example/agent/releases/tag/{key}", when, None, when,
+                          full_text=notes, content_complete=True,
+                          metrics={"repo_full_name": "example/agent", "release_tag": key})
+        database.record_provider_result(ProviderResult("github_watched", "ok", [item], when))
+        database.record_scan(scan_id=key, started_at=when, completed_at=when,
+                             status="complete", config_fingerprint="test", scoring_version="test",
+                             provider_statuses=[], report={})
+    settings = experiment.settings(experiment.HERE / "experiment.example.toml")
+    for selection in ("latest", "new"):
+        work = tmp_path / selection
+        experiment.prepare(work, app_config, settings, False, selection)
+        manifest = experiment.read(work / "manifest.json")
+        assert manifest["scan"]["scan_id"] == "new"
+        cases = [c for c in manifest["cases"] if c["cohort"] == "saved_github"]
+        assert len(cases) == 1
+        assert experiment.load_evidence(work, cases[0])["tag"] == "new"
+    with pytest.raises(ValueError, match="latest completed scan"):
+        experiment.prepare(tmp_path / "older", app_config, settings, False, "old")
+    with pytest.raises(ValueError, match="cannot be combined"):
+        experiment.prepare(tmp_path / "controls", app_config, settings, True, "latest")
+    with database.connect() as cx:
+        assert cx.execute("PRAGMA user_version").fetchone()[0] == 2

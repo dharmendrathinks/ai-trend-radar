@@ -92,9 +92,11 @@ class ProviderResult:
     stale_as_of: datetime | None = None
     error: str | None = None
     request_count: int = 0
+    details: dict[str, Any] = field(default_factory=dict)
 
     def status_dict(self) -> dict[str, Any]:
         return {
+            **({"details": self.details} if self.details else {}),
             "provider": self.provider,
             "status": self.status,
             "item_count": len(self.items),

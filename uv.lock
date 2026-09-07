@@ -3,6 +3,34 @@ revision = 3
 requires-python = ">=3.12"
 
 [[package]]
+name = "ai-trend-radar"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "feedparser" },
+    { name = "httpx" },
+    { name = "huggingface-hub" },
+    { name = "python-dotenv" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "respx" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "feedparser", specifier = ">=6.0.11,<7" },
+    { name = "httpx", specifier = ">=0.27,<1" },
+    { name = "huggingface-hub", specifier = ">=0.28,<2" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3,<9" },
+    { name = "python-dotenv", specifier = ">=1.0,<2" },
+    { name = "respx", marker = "extra == 'dev'", specifier = ">=0.22,<1" },
+]
+provides-extras = ["dev"]
+
+[[package]]
 name = "anyio"
 version = "4.14.2"
 source = { registry = "https://pypi.org/simple" }
@@ -310,31 +338,3 @@ sdist = { url = "https://files.pythonhosted.org/packages/f6/cc/6253133b5bb138fc3
 wheels = [
     { url = "https://files.pythonhosted.org/packages/49/d3/b8441a820a491ddfc024b0b0cf0393375b75ea13866d9c66727e54c2fc80/typing_extensions-4.16.0-py3-none-any.whl", hash = "sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8", size = 45571, upload-time = "2026-07-02T08:40:04.659Z" },
 ]
-
-[[package]]
-name = "youtube-trend-radar"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "feedparser" },
-    { name = "httpx" },
-    { name = "huggingface-hub" },
-    { name = "python-dotenv" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "respx" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "feedparser", specifier = ">=6.0.11,<7" },
-    { name = "httpx", specifier = ">=0.27,<1" },
-    { name = "huggingface-hub", specifier = ">=0.28,<2" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3,<9" },
-    { name = "python-dotenv", specifier = ">=1.0,<2" },
-    { name = "respx", marker = "extra == 'dev'", specifier = ">=0.22,<1" },
-]
-provides-extras = ["dev"]

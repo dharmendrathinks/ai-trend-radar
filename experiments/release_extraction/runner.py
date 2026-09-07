@@ -18,14 +18,15 @@ import time
 import tomllib
 from typing import Any
 
-from youtube_trend_radar.config import load_config
-from youtube_trend_radar.models import Candidate, SourceItem
-from youtube_trend_radar.reports import _atomic_write
-from youtube_trend_radar import topics
-from youtube_trend_radar.utils import clean_text
+from ai_trend_radar.config import load_config
+from ai_trend_radar.models import Candidate, SourceItem
+from ai_trend_radar.reports import _atomic_write
+from ai_trend_radar import topics
+from ai_trend_radar.utils import clean_text
 
 HERE = Path(__file__).resolve().parent
 ARMS = ("rules_summary", "rules_full", "codex")
+REVIEW_FIELDS = ["case_id", "slot", "angle", "title", "supported", "useful", "caveats_preserved", "notes"]
 DISABLED_FEATURES = (
     "shell_tool", "unified_exec", "apps", "plugins", "hooks", "memories",
     "browser_use", "browser_use_external", "in_app_browser", "computer_use",
@@ -57,9 +58,12 @@ def settings(path: Path) -> dict[str, Any]:
     return config
 
 
-def prepare(work: Path, app_config: Path, experiment_config: dict[str, Any], controls_only: bool) -> None:
+def prepare(work: Path, app_config: Path, experiment_config: dict[str, Any], controls_only: bool,
+            scan_id: str | None = None) -> None:
     if work.exists():
         raise ValueError("Use a new work directory; preparation never overwrites a corpus")
+    if controls_only and scan_id:
+        raise ValueError("--scan-id cannot be combined with --controls-only")
     config = load_config(app_config)
     exported: list[tuple[dict[str, Any], dict[str, Any]]] = []
     for control in read(HERE / "controls.json"):
@@ -71,11 +75,21 @@ def prepare(work: Path, app_config: Path, experiment_config: dict[str, Any], con
         exported.append(({"id": "control-" + control["id"], "cohort": "control",
                           "purpose": control["purpose"], "expected_quotes": control["expected_quotes"]}, evidence))
     excluded = {"incomplete_or_legacy": 0, "over_input_limit": 0, "over_case_limit": 0}
+    selected_scan = None
     if not controls_only:
         # No Database.initialize(), cache refresh, or write connection to production state.
         uri = config.database_path.as_uri() + "?mode=ro"
         with sqlite3.connect(uri, uri=True) as cx:
-            rows = cx.execute("SELECT payload_json FROM source_items WHERE item_type='github_release' ORDER BY provider, external_id").fetchall()
+            query = "SELECT payload_json FROM source_items WHERE item_type='github_release'"
+            params = ()
+            if scan_id:
+                latest = cx.execute("SELECT scan_id, started_at FROM scans ORDER BY completed_at DESC LIMIT 1").fetchone()
+                if latest is None or scan_id not in {"latest", latest[0]}:
+                    raise ValueError("Only the latest completed scan can be exported; older source-item snapshots are not retained")
+                selected_scan = {"scan_id": latest[0], "started_at": latest[1]}
+                query += " AND last_observed_at = ?"
+                params = (latest[1],)
+            rows = cx.execute(query + " ORDER BY provider, external_id", params).fetchall()
         saved_count = 0
         for (raw,) in rows:
             item = json.loads(raw)
@@ -106,8 +120,10 @@ def prepare(work: Path, app_config: Path, experiment_config: dict[str, Any], con
                     captured_at=evidence["captured_at"], input_chars=len(evidence["notes"]))
         write(work / case["evidence_file"], evidence)
         cases.append(case)
+    selection = "Complete GitHub releases observed in the latest scan" if selected_scan else "All complete saved GitHub releases"
     write(work / "manifest.json", {"schema_version": 1, "created_at": datetime.now(UTC).isoformat(),
-          "selection": "All complete saved GitHub releases in stable source order, within disclosed caps; no ranking-based selection",
+          "scan": selected_scan,
+          "selection": selection + " in stable source order, within disclosed caps; no ranking-based selection. Observed again does not mean a previously unseen release",
           "excluded": excluded, "source_policy": "GitHub release notes and repository-authored controls only; no YouTube or Reddit export. Operators must confirm permission to send saved notes to a model; a GitHub URL alone does not establish public visibility or redistribution rights.",
           "cases": cases})
     print(f"Prepared {len(cases)} cases; exclusions: {excluded}", flush=True)
@@ -310,6 +326,35 @@ def arm_output(record: dict[str, Any], arm: str) -> dict[str, Any] | None:
     return value
 
 
+def update_review(path: Path, rows: list[dict[str, Any]]) -> None:
+    """Append newly completed options while preserving existing human labels."""
+    existing = []
+    if path.exists():
+        with path.open(newline="") as handle:
+            reader = csv.DictReader(handle)
+            if reader.fieldnames != REVIEW_FIELDS:
+                raise ValueError("Review CSV columns changed; preserve the original columns before regenerating")
+            existing = list(reader)
+    def key(row):
+        return tuple(str(row[field]) for field in ("case_id", "slot", "angle"))
+    indexed = {key(row): row for row in existing}
+    if len(indexed) != len(existing):
+        raise ValueError("Review CSV contains duplicate option rows; existing file was preserved")
+    for row in rows:
+        previous = indexed.get(key(row))
+        if previous is not None:
+            if previous["title"] != row["title"]:
+                raise ValueError("Review option changed; use a new corpus to avoid transferring labels to different output")
+        else:
+            existing.append(row)
+            indexed[key(row)] = row
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=REVIEW_FIELDS)
+    writer.writeheader()
+    writer.writerows(existing)
+    _atomic_write(path, buffer.getvalue())
+
+
 def report(work: Path) -> None:
     manifest = read(work / "manifest.json")
     lines = ["# Release extraction shadow experiment", "", f"Corpus prepared: {manifest['created_at']}", "",
@@ -385,12 +430,7 @@ def report(work: Path) -> None:
     _atomic_write(work / "comparison.md", "\n".join(lines) + "\n")
     _atomic_write(work / "blind-review.md", "\n".join(blind) + "\n")
     write(work / "blind-key.json", mapping)
-    if not (work / "review.csv").exists():
-        buffer = io.StringIO()
-        writer = csv.DictWriter(buffer, fieldnames=["case_id", "slot", "angle", "title", "supported", "useful", "caveats_preserved", "notes"])
-        writer.writeheader()
-        writer.writerows(rows)
-        _atomic_write(work / "review.csv", buffer.getvalue())
+    update_review(work / "review.csv", rows)
     print(f"Comparison: {work / 'comparison.md'}", flush=True)
 
 
@@ -416,6 +456,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", type=Path, default=Path("config.toml"))
     parser.add_argument("--experiment-config", type=Path, default=HERE / "experiment.example.toml")
     parser.add_argument("--controls-only", action="store_true")
+    parser.add_argument("--scan-id", help="prepare only releases observed in the latest completed scan (ID or 'latest')")
     parser.add_argument("--codex", action="store_true", help="explicitly spend Codex usage on the model arm")
     args = parser.parse_args(argv)
     try:
@@ -426,7 +467,7 @@ def main(argv: list[str] | None = None) -> int:
                    for c in manifest["cases"] if c["evidence_status"] == "available"):
                 purge(args.workdir, "configured evidence retention deadline expired; entire pilot payloads purged")
         if args.command == "prepare":
-            prepare(args.workdir, args.config, config, args.controls_only)
+            prepare(args.workdir, args.config, config, args.controls_only, args.scan_id)
         elif args.command == "run":
             run(args.workdir, config, args.codex)
         elif args.command == "report":

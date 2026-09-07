@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from youtube_trend_radar.config import AppConfig, load_config
+from ai_trend_radar.config import AppConfig, load_config
 
 
 ROOT = Path(__file__).resolve().parents[1]

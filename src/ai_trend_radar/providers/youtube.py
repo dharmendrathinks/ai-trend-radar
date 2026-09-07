@@ -6,11 +6,11 @@ from urllib.parse import quote_plus
 import os
 import re
 
-from youtube_trend_radar.config import AppConfig
-from youtube_trend_radar.http import CachedHttpClient
-from youtube_trend_radar.models import Candidate, ProviderResult
-from youtube_trend_radar.providers.common import combined_status, oldest_stale_at
-from youtube_trend_radar.topics import (
+from ai_trend_radar.config import AppConfig
+from ai_trend_radar.http import CachedHttpClient
+from ai_trend_radar.models import Candidate, ProviderResult
+from ai_trend_radar.providers.common import combined_status, oldest_stale_at
+from ai_trend_radar.topics import (
     QUERY_STOPWORDS,
     WORD_RE,
     extract_release_topic,
@@ -19,7 +19,7 @@ from youtube_trend_radar.topics import (
     release_item,
     without_repository_syntax,
 )
-from youtube_trend_radar.utils import clean_text, compact_error
+from ai_trend_radar.utils import clean_text, compact_error
 
 
 SEARCH_API = "https://www.googleapis.com/youtube/v3/search"
@@ -62,7 +62,7 @@ def _local_relevance_annotation(video: dict[str, Any], context: dict[str, Any]) 
         "label": label,
         "reason": reason,
         "matched_feature_anchors": matched_anchors,
-        "analysis_source": "youtube-trend-radar deterministic title/channel annotation",
+        "analysis_source": "ai-trend-radar deterministic title/channel annotation",
         "youtube_supplied": False,
     }
 

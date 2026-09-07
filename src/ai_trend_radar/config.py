@@ -26,7 +26,7 @@ class HttpConfig:
     stale_if_error_hours: int = 48
     max_retries: int = 2
     retry_backoff_seconds: float = 0.5
-    user_agent: str = "youtube-trend-radar/0.1"
+    user_agent: str = "ai-trend-radar/0.1"
 
 
 @dataclass(slots=True)
@@ -141,6 +141,17 @@ def load_config(path: str | Path) -> AppConfig:
     http_raw = _require_table(data, "http")
     official = _require_table(data, "official")
     github = _require_table(data, "github")
+    established_queries = github.get("established_queries", [])
+    if not isinstance(established_queries, list) or not all(isinstance(q, str) and q.strip() for q in established_queries):
+        raise ConfigError("github.established_queries must be a list of nonempty strings")
+    if len(established_queries) > 4:
+        raise ConfigError("github.established_queries supports at most 4 bounded searches")
+    for key, default, maximum in (("established_per_query", 5, 20), ("established_tracking_limit", 20, 100),
+                                  ("established_followup_per_scan", 10, 20), ("established_tracking_days", 14, 90)):
+        value = _positive(github.get(key, default), f"github.{key}")
+        if value > maximum:
+            raise ConfigError(f"github.{key} must be <= {maximum}")
+        github[key] = value
     hn = _require_table(data, "hacker_news")
     hf = _require_table(data, "huggingface")
     youtube = _require_table(data, "youtube")
@@ -227,7 +238,7 @@ def load_config(path: str | Path) -> AppConfig:
             stale_if_error_hours=_positive(http_raw.get("stale_if_error_hours", 48), "http.stale_if_error_hours"),
             max_retries=_positive(http_raw.get("max_retries", 2), "http.max_retries", allow_zero=True),
             retry_backoff_seconds=float(http_raw.get("retry_backoff_seconds", 0.5)),
-            user_agent=str(http_raw.get("user_agent", "youtube-trend-radar/0.1")),
+            user_agent=str(http_raw.get("user_agent", "ai-trend-radar/0.1")),
         ),
         official_feeds=feeds,
         github=github,

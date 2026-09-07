@@ -6,10 +6,10 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import respx
 
-from youtube_trend_radar.config import AppConfig
-from youtube_trend_radar.db import Database
-from youtube_trend_radar.http import CachedHttpClient
-from youtube_trend_radar.models import ProviderResult, SourceItem
+from ai_trend_radar.config import AppConfig
+from ai_trend_radar.db import Database
+from ai_trend_radar.http import CachedHttpClient
+from ai_trend_radar.models import ProviderResult, SourceItem
 
 
 def repo_item(now: datetime, stars: int) -> SourceItem:

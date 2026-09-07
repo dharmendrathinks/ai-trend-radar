@@ -11,12 +11,12 @@ import os
 import sqlite3
 import sys
 
-from youtube_trend_radar.config import ConfigError, load_config
-from youtube_trend_radar.db import Database
-from youtube_trend_radar.http import CachedHttpClient
-from youtube_trend_radar.models import ProviderResult
-from youtube_trend_radar.providers import github, hackernews, huggingface, official, youtube
-from youtube_trend_radar.ranking import (
+from ai_trend_radar.config import ConfigError, load_config
+from ai_trend_radar.db import Database
+from ai_trend_radar.http import CachedHttpClient
+from ai_trend_radar.models import ProviderResult
+from ai_trend_radar.providers import github, hackernews, huggingface, official, youtube
+from ai_trend_radar.ranking import (
     SCORING_VERSION,
     attach_repository_support,
     eligible_items,
@@ -25,12 +25,12 @@ from youtube_trend_radar.ranking import (
     partition_main_list_floor,
     rank_candidates,
 )
-from youtube_trend_radar.reports import build_report, write_reports, _candidate_dict, _atomic_write
-from youtube_trend_radar.state import RadarState, render_brief
-from youtube_trend_radar.resolution import cluster_items
-from youtube_trend_radar.topics import attach_video_topics, partition_topicable_candidates
-from youtube_trend_radar.utils import compact_error
-from youtube_trend_radar.slack import SlackDelivery, validate_webhook
+from ai_trend_radar.reports import build_report, write_reports, _candidate_dict, _atomic_write
+from ai_trend_radar.state import RadarState, render_brief
+from ai_trend_radar.resolution import cluster_items
+from ai_trend_radar.topics import attach_video_topics, partition_topicable_candidates
+from ai_trend_radar.utils import compact_error
+from ai_trend_radar.slack import SlackDelivery, validate_webhook
 
 
 LOGGER = logging.getLogger(__name__)
@@ -189,10 +189,10 @@ def run_scan(config_path: Path, *, top: int | None = None, no_youtube: bool = Fa
                 sent, pending = delivery.send_pending()
                 print(f"Slack: {sent} sent; {pending} pending")
                 if pending:
-                    print("Reports saved; Slack delivery pending. Retry with youtube-trend-radar notify.", file=sys.stderr)
+                    print("Reports saved; Slack delivery pending. Retry with ai-trend-radar notify.", file=sys.stderr)
                     return 2
             except (OSError, RuntimeError, sqlite3.Error):
-                print("Reports saved; Slack delivery failed. Retry with youtube-trend-radar notify.", file=sys.stderr)
+                print("Reports saved; Slack delivery failed. Retry with ai-trend-radar notify.", file=sys.stderr)
                 return 2
         return 0
     except (ConfigError, OSError, RuntimeError, ValueError, sqlite3.Error) as exc:

@@ -8,7 +8,7 @@ from typing import Any, Iterator
 import json
 import sqlite3
 
-from youtube_trend_radar.models import ProviderResult, SourceItem, isoformat
+from ai_trend_radar.models import ProviderResult, SourceItem, isoformat
 
 
 SCHEMA = """
@@ -104,16 +104,19 @@ class Database:
     def initialize(self) -> None:
         with self.connect() as connection:
             version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version > 1:
+            if version > 2:
                 raise RuntimeError(f"unsupported database schema {version}")
             connection.executescript(SCHEMA)
             if "confirmed_at" not in {r[1] for r in connection.execute("PRAGMA table_info(http_cache)")}:
                 connection.execute("ALTER TABLE http_cache ADD COLUMN confirmed_at TEXT")
             if "measurement_kind" not in {r[1] for r in connection.execute("PRAGMA table_info(observations)")}:
                 connection.execute("ALTER TABLE observations ADD COLUMN measurement_kind TEXT NOT NULL DEFAULT 'legacy'")
-            from youtube_trend_radar.state import STATE_SCHEMA
+            from ai_trend_radar.state import STATE_SCHEMA
             connection.executescript(STATE_SCHEMA)
-            connection.execute("PRAGMA user_version=1")
+            from ai_trend_radar.feedback import FEEDBACK_SCHEMA
+            from ai_trend_radar.discovery import DISCOVERY_SCHEMA
+            connection.executescript(FEEDBACK_SCHEMA + DISCOVERY_SCHEMA)
+            connection.execute("PRAGMA user_version=2")
 
     def healthcheck(self) -> None:
         with self.connect() as connection:
@@ -276,4 +279,3 @@ class Database:
                     json.dumps(report, sort_keys=True, ensure_ascii=False),
                 ),
             )
-

@@ -45,6 +45,10 @@ uv run python experiments/release_extraction/runner.py report \
 
 If you have no saved scans yet, add `--controls-only --config config.example.toml` to `prepare`. Otherwise, `--config` chooses the Radar configuration containing the database path and topic-rule settings. It does not start a scan.
 
+For a fresh scan followed by LLM review, first run `uv run ai-trend-radar scan` and add `--scan-id latest` to the preparation command. This selects only GitHub releases observed during that completed scan, plus the eight controls. The manifest records the scan ID. The scan itself does not invoke the model or send Slack messages unless `--slack` is supplied. Run the explicit `--codex` and `report` steps above to produce the comparison.
+
+Prepare immediately after the scan: stored source items are updated in place, so `--scan-id` accepts only the latest completed scan's ID or `latest`. Seeing a release in a new scan does not make it an unseen evaluation case; compare its source URL against prior pilots before calling it a holdout.
+
 Inspect `manifest.json` and the selected evidence before `--codex`. The exporter accepts only stored GitHub releases with explicit complete notes; legacy summaries and capped inputs are excluded and counted. A GitHub URL alone does not establish that a repository is public or that you have permission to send its content to a model.
 
 ## Limits and reproducibility
@@ -68,10 +72,10 @@ Model aliases can change behind the same name. The requested name is recorded, b
 | `comparison.md` | Named-arm comparison and per-case outputs |
 | `metrics.json` | Mechanical counts separated into synthetic controls and saved releases |
 | `blind-review.md` | Options A/B/C per case without arm names; writing style may still reveal the arm |
-| `review.csv` | Empty fields for human judgments; existing edits are preserved on report regeneration |
+| `review.csv` | Human judgments; report regeneration preserves existing labels and appends newly completed options |
 | `blind-key.json` | Arm mapping; keep hidden during the first review |
 
-Generate review materials after finishing the desired model cases. If you already filled `review.csv`, keep a copy before regenerating a review for additional outputs; the runner never overwrites existing labels or aggregates them automatically.
+You can generate review materials before or after the model cases. Regenerating the report appends missing rows by case, blinded slot, and angle, preserving existing labels and notes without duplicating rows. If an existing option's title changes, regeneration fails instead of transferring its judgments to a different claim. Keep the original CSV columns. Human judgments are not aggregated automatically.
 
 ## Evaluation protocol
 

@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from youtube_trend_radar.config import ConfigError, load_config
-from youtube_trend_radar.utils import clean_text, normalize_url, parse_datetime
+from ai_trend_radar.config import ConfigError, load_config
+from ai_trend_radar.utils import clean_text, normalize_url, parse_datetime
 
 
 ROOT = Path(__file__).resolve().parents[1]

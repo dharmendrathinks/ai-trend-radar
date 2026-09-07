@@ -9,8 +9,8 @@ import time
 
 import httpx
 
-from youtube_trend_radar.config import HttpConfig
-from youtube_trend_radar.db import CacheRecord, Database
+from ai_trend_radar.config import HttpConfig
+from ai_trend_radar.db import CacheRecord, Database
 
 
 SENSITIVE_PARAMS = {"key", "token", "access_token", "api_key"}

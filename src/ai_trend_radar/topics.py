@@ -4,8 +4,8 @@ from hashlib import sha256
 from typing import Any
 import re
 
-from youtube_trend_radar.models import Candidate, SourceItem, isoformat
-from youtube_trend_radar.utils import clean_text
+from ai_trend_radar.models import Candidate, SourceItem, isoformat
+from ai_trend_radar.utils import clean_text
 
 
 EXTRACTION_VERSION = "release-topic-v1.2"

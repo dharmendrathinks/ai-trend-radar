@@ -6,10 +6,10 @@ from math import pow
 from typing import Any
 import unicodedata
 
-from youtube_trend_radar.config import AppConfig, InterestConfig
-from youtube_trend_radar.models import Candidate, SourceItem
-from youtube_trend_radar.resolution import effective_item_time, is_relevant, resolve_items
-from youtube_trend_radar.utils import normalize_url
+from ai_trend_radar.config import AppConfig, InterestConfig
+from ai_trend_radar.models import Candidate, SourceItem
+from ai_trend_radar.resolution import effective_item_time, is_relevant, resolve_items
+from ai_trend_radar.utils import normalize_url
 
 
 SCORING_VERSION = "v1.1"

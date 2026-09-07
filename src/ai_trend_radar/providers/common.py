@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from youtube_trend_radar.models import ProviderStatus
+from ai_trend_radar.models import ProviderStatus
 
 
 def combined_status(*, item_count: int, failures: int, cache_states: list[str]) -> ProviderStatus:

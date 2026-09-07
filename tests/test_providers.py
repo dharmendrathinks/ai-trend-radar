@@ -6,10 +6,10 @@ from datetime import UTC, datetime
 import httpx
 import respx
 
-from youtube_trend_radar.config import AppConfig, OfficialFeedConfig
-from youtube_trend_radar.db import Database
-from youtube_trend_radar.http import CachedHttpClient
-from youtube_trend_radar.providers import github, hackernews, huggingface, official
+from ai_trend_radar.config import AppConfig, OfficialFeedConfig
+from ai_trend_radar.db import Database
+from ai_trend_radar.http import CachedHttpClient
+from ai_trend_radar.providers import github, hackernews, huggingface, official
 
 
 NOW = datetime(2026, 9, 1, 12, tzinfo=UTC)
