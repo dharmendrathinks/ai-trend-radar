@@ -30,6 +30,8 @@ Pull requests should:
 - Preserve provider failure isolation and credential-free tests.
 - Keep calculations deterministic and evidence-backed.
 - Keep LLM suggestions separate from deterministic scoring, the review ledger, and Slack delivery. Mock model calls in tests; verify literal quotes, cache invalidation, disabled mode, and failure isolation.
+- Editorial topic priority is separate from Discovery Priority. Test /100 score bounds, the 30/30/20/20 calculation, global topic ordering, missing dates/scores, audience cache invalidation, and freshness recalculation on cached results. Model judgments are not measured audience demand. Version and document rubric changes; the extraction-only experiment does not evaluate editorial ranking.
+- For HN page enrichment, preserve the shared model-call cap and main-list/page limits. Test public-address validation, DNS pinning, redirects, response/text bounds, page-cache reuse, failure isolation, and the distinction between HN submission time and product launch time. Never replace linked-page evidence with a headline-only score.
 - Update public documentation when configuration or output changes.
 
 Scoring weights and eligibility thresholds are product behavior. Do not casually tune them to improve one scan; propose such changes with evidence, before/after examples, and regression tests.

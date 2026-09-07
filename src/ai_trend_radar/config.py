@@ -84,11 +84,13 @@ class DedupConfig:
 @dataclass(slots=True)
 class LlmConfig:
     enabled: bool = False
+    audience: str = "Technical creators and developers interested in AI coding tools, agents, MCP, local AI, developer models, and SDK workflows."
     model: str = "gpt-5.6-sol"
     reasoning_effort: str = "low"
     codex_binary: str = "codex"
     max_calls_per_scan: int = 24
     max_releases: int = 20
+    max_hn_stories: int = 5
     timeout_seconds: int = 120
     max_input_chars: int = 20000
 
@@ -155,16 +157,18 @@ def load_config(path: str | Path) -> AppConfig:
     if not isinstance(llm_raw.get("enabled", False), bool):
         raise ConfigError("llm.enabled must be a boolean")
     llm.enabled = llm_raw.get("enabled", False)
-    for key in ("model", "reasoning_effort", "codex_binary"):
+    for key in ("model", "reasoning_effort", "codex_binary", "audience"):
         value = llm_raw.get(key, getattr(llm, key))
         if not isinstance(value, str) or not value.strip():
             raise ConfigError(f"llm.{key} must be a nonempty string")
         setattr(llm, key, value)
+    if len(llm.audience) > 2000:
+        raise ConfigError("llm.audience must be <= 2000 characters")
     if llm.reasoning_effort not in {"minimal", "low", "medium", "high", "xhigh"}:
         raise ConfigError("llm.reasoning_effort must be minimal, low, medium, high, or xhigh")
-    for key, maximum in (("max_calls_per_scan", 100), ("max_releases", 100),
+    for key, maximum in (("max_calls_per_scan", 100), ("max_releases", 100), ("max_hn_stories", 20),
                          ("timeout_seconds", 600), ("max_input_chars", 100000)):
-        value = _positive(llm_raw.get(key, getattr(llm, key)), f"llm.{key}")
+        value = _positive(llm_raw.get(key, getattr(llm, key)), f"llm.{key}", allow_zero=key == "max_hn_stories")
         if value > maximum:
             raise ConfigError(f"llm.{key} must be <= {maximum}")
         setattr(llm, key, value)

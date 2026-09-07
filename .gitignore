@@ -17,6 +17,7 @@ reports/
 *.sqlite3
 *.db
 *.llm/
+*.pages/
 
 # Local configuration may contain machine-specific paths.
 config.toml

@@ -9,12 +9,13 @@ import os
 import tempfile
 
 from ai_trend_radar.config import AppConfig
+from ai_trend_radar.llm_scoring import rank_updates
 from ai_trend_radar.models import Candidate, ProviderResult, isoformat
 from ai_trend_radar.ranking import SCORING_VERSION
 from ai_trend_radar.resolution import effective_item_time
 
 
-SCHEMA_VERSION = "2.1"
+SCHEMA_VERSION = "2.3"
 
 
 def _event_time_basis(candidate: Candidate) -> str:
@@ -97,7 +98,8 @@ def build_report(
         "started_at": isoformat(started_at),
         "generated_at": isoformat(completed_at),
         "status": status,
-        "llm_updates": llm_updates or {"status": "disabled", "updates": []},
+        "llm_updates": rank_updates(llm_updates or {"status": "disabled", "updates": []}, completed_at,
+                                    config.ranking.freshness_half_life_hours, config.llm.audience),
         "product_boundary": "YouTube evidence is not included in Discovery Priority; inspect it manually.",
         "provider_status": [result.status_dict() for result in provider_results],
         "effective_interest_thresholds": asdict(config.ranking.interest),
@@ -129,25 +131,65 @@ def _signal_time(signal: dict[str, Any]) -> str:
     return label
 
 
+def _score_text(value: int | float | None) -> str:
+    return f"{value:g}" if value is not None else "N/A"
+
+
 def _llm_markdown(data: dict[str, Any]) -> list[str]:
     lines = ["## LLM-discovered updates", ""]
     if data["status"] == "disabled":
         return [*lines, "Disabled. Enable with `scan --llm` or `[llm] enabled = true` (uses model allowance).", ""]
+    ranked = "ranked_topics" in data
+    order = "Ranked by Overall Priority, highest first; unscored topics last." if ranked else "Legacy report: newest release first; editorial scores unavailable."
     lines.extend([
         f"Status: **{data['status']}** · Model: `{data['model']}` · New calls: {data['new_calls']} · Cached: {data['cached_results']} · Failed: {data['failures']} · Skipped: {data['skipped']} · Abstained: {data['abstentions']}",
-        "", "Model-generated suggestions from captured GitHub release notes, newest release first. Quotes are checked against the source text; interpretations still need human review. These do not change Discovery Priority, the review inbox, or Slack briefs and have no YouTube validation.", "",
+        "", f"Model-generated suggestions from captured GitHub release notes and selected Hacker News linked pages. {order} Quotes are checked against captured text; interpretations and publisher claims still need human review. These do not change Discovery Priority, the review inbox, or Slack briefs and have no topic-specific YouTube validation.", "",
     ])
-    if not data["updates"]:
+    if data.get("coverage"):
+        coverage = data["coverage"]
+        lines.extend([f"Coverage: {coverage['github_release_candidates']} eligible GitHub releases; {coverage['hn_main_list_candidates']} main-list HN stories, up to {coverage['hn_page_limit']} linked pages. {coverage['selection']}", ""])
+    topics = data.get("ranked_topics", [
+        {**release, **angle, "release_title": release["title"]}
+        for release in data["updates"] for angle in release["angles"]
+    ])
+    labels = {"developer_impact": "Developer impact", "demo_potential": "Demo potential",
+              "freshness": "Freshness", "audience_fit": "Audience impact"}
+    if ranked:
+        ranking = data["ranking"]
+        lines.extend([
+            "**Every category is scored out of 100.** Developer impact, demo potential, and audience impact are LLM editorial judgments, not measured outcomes. Audience impact assesses relevance to the configured audience, not predicted reach. Freshness uses release publication time or HN submission time; a recent HN post does not prove a new product. Overall = 30% developer impact + 30% demo + 20% freshness + 20% audience impact.",
+            "", f"Audience: {ranking['audience']}",
+            "", f"Rubric: `{ranking['version']}` · Freshness half-life: {ranking['freshness_half_life_hours']:g} hours. {ranking['limitations']}", "",
+        ])
+        if topics:
+            lines.extend(["| # | Topic | Developer impact /100 | Demo potential /100 | Freshness /100 | Audience impact /100 | Overall /100 |",
+                          "|---:|---|---:|---:|---:|---:|---:|",])
+            for number, topic in enumerate(topics, 1):
+                priority = topic["video_priority"]
+                title = topic["title"].replace("|", "\\|").replace("\n", " ")
+                values = [*[_score_text(priority["categories"][key]["score"]) for key in labels], _score_text(priority["overall"])]
+                lines.append(f"| {number} | {title} | " + " | ".join(values) + " |")
+            lines.append("")
+    if not topics:
         lines.extend(["No validated LLM-discovered updates available for this scan.", ""])
-    for release in data["updates"]:
-        for angle in release["angles"]:
-            lines.extend([f"### {angle['title']}", "",
-                f"Release: [{release['title']}]({release['source_url']}) · Published: {release['published_at'] or 'unknown'} · {'Cached extraction' if release['cached'] else 'New extraction'} · Source: {release['source_cache_state']}",
-                "", angle["developer_value"], "", "Source evidence:", ""])
-            for quote in angle["evidence_quotes"]:
-                lines.extend(["> " + quote.replace("\r\n", "\n").replace("\n", "\n> "), ""])
-            if angle["caveats"]:
-                lines.extend(["Caveats:", "", *[f"- {caveat}" for caveat in angle["caveats"]], ""])
+    for number, topic in enumerate(topics, 1):
+        lines.extend([f"### {number}. {topic['title']}", "",
+            f"{'Linked page' if topic.get('source_kind') == 'hacker_news_page' else 'Release'}: [{topic['release_title']}]({topic['source_url']}) · {topic.get('time_basis', 'release publication time')}: {topic['published_at'] or 'unknown'} · {'Cached extraction' if topic['cached'] else 'New extraction'} · Source: {topic['source_cache_state']}", "",
+        ])
+        if topic.get("source_kind") == "hacker_news_page":
+            lines.extend([f"[HN discussion]({topic['discovery_url']}) · Evidence: extracted public-page text, not independent product testing.", ""])
+        if ranked:
+            priority = topic["video_priority"]
+            lines.extend([f"**Overall Priority: {_score_text(priority['overall'])}/100**", ""])
+            for key, label in labels.items():
+                category = priority["categories"][key]
+                lines.append(f"- **{label}: {_score_text(category['score'])}/100** — {category['reason']}")
+            lines.append("")
+        lines.extend([topic["developer_value"], "", "Source evidence:", ""])
+        for quote in topic["evidence_quotes"]:
+            lines.extend(["> " + quote.replace("\r\n", "\n").replace("\n", "\n> "), ""])
+        if topic["caveats"]:
+            lines.extend(["Caveats:", "", *[f"- {caveat}" for caveat in topic["caveats"]], ""])
     if data["failures"] or data["skipped"] or data["warnings"]:
         lines.extend(["Extraction limitations (regular results remain available):", ""])
         for entry in data["releases"]:

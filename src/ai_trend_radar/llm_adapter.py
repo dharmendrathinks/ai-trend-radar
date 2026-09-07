@@ -44,12 +44,15 @@ def validate_schema(value: Any, schema: dict[str, Any]) -> None:
     elif kind == "string":
         if not isinstance(value, str) or not schema.get("minLength", 0) <= len(value) <= schema.get("maxLength", 99999):
             raise ValueError("Response string does not match schema bounds")
+    elif kind == "integer":
+        if type(value) is not int or not schema.get("minimum", 0) <= value <= schema.get("maximum", 100):
+            raise ValueError("Response integer does not match schema bounds")
     else:
         raise ValueError("Unsupported schema type")
 
 
-def validate_model(response: Any, evidence: dict[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
-    validate_schema(response, read(HERE / "response.schema.json"))
+def validate_model(response: Any, evidence: dict[str, Any], *, scored: bool = False) -> tuple[list[dict[str, Any]], list[str]]:
+    validate_schema(response, read(HERE / ("scored.schema.json" if scored else "response.schema.json")))
     if bool(response["angles"]) == bool(response["abstain_reason"].strip()):
         raise ValueError("Abstention reason must be present only when there are no angles")
     checks = []
@@ -62,9 +65,10 @@ def validate_model(response: Any, evidence: dict[str, Any]) -> tuple[list[dict[s
 
 
 def codex_command(binary: str, directory: Path, config: dict[str, Any]) -> list[str]:
+    schema = "scored.schema.json" if config.get("editorial_scoring") else "response.schema.json"
     command = [binary, "exec", "--ignore-user-config", "--ephemeral", "--skip-git-repo-check",
                "--sandbox", "read-only", "--cd", str(directory), "--model", config["model"],
-               "--json", "--output-schema", str(HERE / "response.schema.json"),
+               "--json", "--output-schema", str(HERE / schema),
                "--output-last-message", str(directory / "response.json"),
                "-c", 'approval_policy="never"', "-c", 'web_search="disabled"',
                "-c", "project_doc_max_bytes=0", "-c", "skills.bundled.enabled=false",
@@ -80,7 +84,12 @@ def model_result(evidence: dict[str, Any], config: dict[str, Any], binary: str) 
                "APPDATA", "LOCALAPPDATA", "SSL_CERT_FILE", "SSL_CERT_DIR"}
     env = {key: value for key, value in os.environ.items() if key.upper() in allowed}
     supplied = {key: evidence[key] for key in ("title", "repository", "tag", "source_url", "notes")}
-    prompt = (HERE / "prompt.md").read_text() + "\n\nUNTRUSTED RELEASE EVIDENCE (JSON):\n" + json.dumps(supplied, ensure_ascii=False)
+    community = config.get("source_kind") == "hacker_news_page"
+    prompt = (HERE / ("community.md" if community else "prompt.md")).read_text()
+    if config.get("editorial_scoring"):
+        prompt += "\n\n" + (HERE / "editorial.md").read_text()
+        supplied["audience"] = config["audience"]
+    prompt += "\n\nUNTRUSTED SOURCE EVIDENCE (JSON):\n" + json.dumps(supplied, ensure_ascii=False)
     started = time.monotonic()
     record: dict[str, Any] = {"status": "failed", "response": None, "quote_checks": [], "errors": [],
                               "usage": None, "tool_items": [], "diagnostic_items": [], "turn_completed": False,
@@ -121,7 +130,7 @@ def model_result(evidence: dict[str, Any], config: dict[str, Any], binary: str) 
             if output.is_file():
                 try:
                     record["response"] = read(output)
-                    checks, errors = validate_model(record["response"], evidence)
+                    checks, errors = validate_model(record["response"], evidence, scored=bool(config.get("editorial_scoring")))
                     record["quote_checks"] = checks
                     record["errors"].extend(errors)
                 except (ValueError, TypeError, KeyError):

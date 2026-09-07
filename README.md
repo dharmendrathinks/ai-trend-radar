@@ -10,7 +10,7 @@ A local CLI for discovering promising AI and developer video topics from upstrea
 
 [Quick start](#quick-start) · [Slack setup](#optional-slack-delivery) · [Scheduling](#scheduled-runs) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting) · [Contributing](CONTRIBUTING.md)
 
-**Status:** alpha; v0.2.0 source, release publication pending. This version adds optional LLM-discovered updates to normal reports, alongside Slack delivery and the standalone extraction evaluation harness. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for scope and migration details. [plan_v2.md](plan_v2.md) is a strategic review and roadmap, not a list of shipped capabilities.
+**Status:** alpha. [v0.2.0](https://github.com/dharmendrathinks/ai-trend-radar/releases/tag/v0.2.0) adds scored LLM-discovered topics from GitHub releases and selected Hacker News pages, alongside Slack delivery and the standalone extraction evaluation harness. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for scope and migration details. [plan_v2.md](plan_v2.md) is a strategic review and roadmap, not a list of shipped capabilities.
 
 Previously named **YouTube Trend Radar**. Current source installs the `ai-trend-radar` command and `ai_trend_radar` Python package; the old command and import names are no longer provided. For an existing checkout, update `origin` to `git@github.com:dharmendrathinks/ai-trend-radar.git`, then run `uv sync --locked --extra dev` and update scheduled commands. You can keep your checkout's existing folder name and reuse its configuration, databases, and reports. Published v0.1.0 artifacts retain the original names.
 
@@ -234,7 +234,7 @@ Full source text is local data in SQLite and JSON reports, just like the existin
 
 The application applies an additive, idempotent SQLite migration on the next run. Existing source items, scans, and metric history are retained. Old metric observations lack cache provenance, so they are labeled `legacy` and excluded from new measured-growth baselines. New growth checkpoints begin with a verified response; do not interpret that initial warm-up as a lack of project activity.
 
-Old reports keep their original identities. New reports use schema `2.1` (adds `llm_updates`), corrected scoring `v1.1`, and deterministic extraction `release-topic-v1.2`. The local database remains schema 2. `event_id` is the durable review key; `fingerprint` remains an alias for compatibility. Review state starts with the new event ledger. Unsupported future database versions are rejected.
+Old reports keep their original identities. New reports use schema `2.3` (`llm_updates` with grouped updates, ranked topics, coverage, source/time provenance, and editorial ranking metadata), corrected Discovery Priority scoring `v1.1`, and deterministic extraction `release-topic-v1.2`. The local database remains schema 2. `event_id` is the durable review key; `fingerprint` remains an alias for compatibility. Review state starts with the new event ledger. Unsupported future database versions are rejected.
 
 ### Updating and keeping state
 
@@ -251,7 +251,7 @@ Pause scheduled runs before backup or upgrade. Back up your configured database 
 
 The discovery/feedback update adds three SQLite tables and upgrades the database to schema **2**, preserving existing events, observations, and decisions. Older code that supports only schema 1 refuses the upgraded database. Restore a pre-upgrade backup if reverting to that code. New GitHub collection settings are opt-in for existing configurations; copy the desired `established_*` keys from the example. Feedback needs no additional configuration.
 
-For the published snapshot, see the [v0.1.0 release](https://github.com/dharmendrathinks/ai-trend-radar/releases/tag/v0.1.0), which includes a wheel, source distribution, and checksums. The wheel installs the CLI; example configuration comes from the repository or source distribution. That release was not published to PyPI.
+Download the wheel, source distribution, and checksums from the [v0.2.0 release](https://github.com/dharmendrathinks/ai-trend-radar/releases/tag/v0.2.0). The wheel installs the CLI and packaged LLM prompts/schemas; example configuration comes from the repository or source distribution. This release is distributed through GitHub, not PyPI. Historical v0.1.0 artifacts retain the original project name.
 
 
 ## What it watches
@@ -446,26 +446,45 @@ Run `uv run ai-trend-radar scan --llm` after installing and logging into a compa
 
 For regular and scheduled scans, add the `[llm]` section from `config.example.toml` to your local `config.toml` and set `enabled = true`. Set `codex_binary` to its absolute path if your scheduler cannot find it. `--llm` and `--no-llm` override configuration for one scan. No scheduler command change is otherwise needed.
 
-The first report section shows model-generated capability titles, developer value, original release links, publication dates, exact source quotes, and caveats. It reads eligible GitHub releases **before** deterministic topicability, freshness-floor, and top-N presentation gates. Releases are newest-first; this is not an LLM ranking or a claim that every suggestion is new to you. Duplicate topics can occur across releases or between sections. Suggestions do not enter the review inbox, change scores, receive YouTube validation, or appear in the Slack changes brief.
+The first report section shows numbered model-generated topics, a score comparison table, developer value, original release links, publication dates, exact source quotes, and caveats. It reads eligible GitHub releases **before** deterministic topicability, freshness-floor, and top-N presentation gates. Release selection for extraction is newest-first, but **all extracted topics are presented in descending Overall Priority**, not grouped by release. Duplicate topics can occur across releases or between sections. Suggestions do not enter the review inbox, change deterministic Discovery Priority, receive YouTube validation, or appear in the Slack changes brief.
 
-Defaults bound each scan to 20 complete releases, 24 new model calls, 20,000 input characters per release, and 120 seconds per call. Calls are sequential and stop after three consecutive new-call failures. Large/incomplete inputs and capped releases are skipped with reasons; no truncation or automatic repair is used. A first scan may take several minutes and consume model allowance. Quote matching proves the quoted text exists, not that the model's interpretation is correct.
+The LLM also assesses up to five distinct linked pages from **Hacker News stories selected for Top Opportunities**, in Discovery Priority order. This covers project discoveries without release notes. Page text, not just the HN headline, must support the topic. HN stories are attempted before GitHub releases under the same model-call budget. Set `llm.max_hn_stories = 0` to disable linked-page fetching. Stories outside the selected main list and other source types are not assessed; the report discloses coverage and per-source skips.
 
-Unchanged inputs reuse results in `data/radar.llm/` (derived from the configured database filename). Keys include release identity and notes, model/effort, and adapter/prompt/schema hashes, not observation timestamps. Valid results, abstentions, and failures are cached. To retry a failed extraction after fixing login or upgrading Codex, move its `<cache_key>.json` out of this directory; the report JSON records that key. Keep cache files private: they contain captured notes and model output. Simultaneous scans are not coordinated and may duplicate calls.
+The page reader follows at most three redirects, validates public DNS addresses at every hop, pins connections to validated addresses, and uses no cookies, credentials, proxies, browser rendering, or further link crawling. It accepts HTML/plain text/Markdown up to 256,000 response bytes and the configured model text limit, with a maximum 10-second socket timeout/read deadline per hop. Private/local addresses, credential-bearing URLs, unsupported formats, HTTPS downgrades, and insufficient/oversized pages are skipped. Quote checks use extracted page text (HTML entities decoded and boilerplate removed), not raw HTML. Publisher claims are not independent verification. Page text is cached in `data/radar.pages/` for the configured HTTP cache TTL, without stale-on-error fallback.
+
+Report JSON includes `source_kind`, `time_basis`, and `discovery_url`. The legacy `releases` array records both release and HN extraction attempts; `coverage` explains selection limits. All topics still receive the same four scores and are ranked together.
+
+Each topic has four independent scores **out of 100**, with reasons:
+
+| Category | Basis | Overall weight |
+|---|---|---:|
+| Developer impact | LLM editorial judgment of the documented workflow change | 30% |
+| Demo potential | LLM editorial judgment of an observable demonstration; not tested feasibility | 30% |
+| Freshness | Calculated: `100 × 2^(-age_hours / half_life_hours)` | 20% |
+| Audience impact | LLM editorial judgment of relevance to `[llm].audience`, not predicted reach or channel analytics | 20% |
+
+`Overall = 0.30 × Impact + 0.30 × Demo + 0.20 × Freshness + 0.20 × Audience impact`. The report shows categories in that order; the JSON key for audience relevance is `audience_fit`. These are editorial research priorities, **not predictions of views, demand, or video success**. Inspect individual scores to prioritize a strong demo or high-impact change yourself. The versioned `video-topic-v1` rubric uses anchored 0/25/50/75/100 descriptions in the packaged `editorial.md`. Explanations and factual claims still need human review; literal quote checks do not validate editorial judgments.
+
+Freshness uses the release publication date **or HN submission date**, and the configured ranking half-life (48 hours by default), recalculated at report generation even for cached model results. A recent HN submission is discovery recency, **not proof of a new product or feature**; its time basis is shown explicitly. Missing, invalid, or future dates produce `N/A` freshness and overall priority; missing editorial assessments also leave overall priority unavailable. Unscored topics are last. Ties use freshness, source URL, title, then stable topic ID. Full JSON preserves grouped `updates` and adds globally ordered `ranked_topics`, per-category scores/reasons, and ranking metadata. Edit `llm.audience` to describe your audience (maximum 2,000 characters); changing it requires fresh model assessments.
+
+Defaults bound each scan to 20 complete releases plus five main-list HN pages, 24 new model calls across both lanes, 20,000 input characters per source, and 120 seconds per model call. Calls are sequential and stop after three consecutive new-call failures. Large/incomplete inputs and capped releases are skipped with reasons; no truncation or automatic repair is used. A first scan may take several minutes and consume model allowance. Quote matching proves the quoted text exists, not that the model's interpretation is correct.
+
+Unchanged inputs reuse results in `data/radar.llm/` (derived from the configured database filename). Keys include source kind, identity and text, model/effort, audience, and adapter/prompt/editorial-rubric/schema hashes, not observation timestamps. Old extraction-only results cannot supply editorial scores and are not reused by scored extraction. Valid results, abstentions, and failures are cached. To retry a failed extraction after fixing login or upgrading Codex, move its `<cache_key>.json` out of this directory; the report JSON records that key. Keep cache files private: they contain captured notes and model output. Simultaneous scans are not coordinated and may duplicate calls.
 
 Model, executable, or cache problems are disclosed separately under `llm_updates.status`; the ordinary provider/scan status still describes deterministic discovery. The normal report remains available on model failure. Disabling LLM use needs no credentials and performs no model calls.
 
-Enabling this feature sends selected GitHub release notes to the model service. Confirm permission for all configured repositories, including any private repositories reachable with your GitHub token. YouTube and other provider content are not sent. The adapter uses a temporary working directory, read-only execution, disabled tools, no project instructions, and an allowlisted environment that excludes source API tokens and Slack secrets.
+Enabling this feature sends selected GitHub release notes and linked-page text for main-list HN stories to the model service. Confirm permission for all configured repositories, including any private repositories reachable with your GitHub token. YouTube content and HN comments are not sent. The adapter uses a temporary working directory, read-only execution, disabled tools, no project instructions, and an allowlisted environment that excludes source API tokens and Slack secrets.
 
 ### Extraction evaluation harness
 
-The [shadow experiment](experiments/release_extraction/README.md) compares summary-input rules, complete-input rules, and evidence-constrained Codex extraction on the same captured releases. It shares the packaged adapter and includes authored controls, quote validation, a bounded model-call budget, saved outputs, and human review materials. Its saved evaluation results are not automatically imported into normal scans.
+The [shadow experiment](experiments/release_extraction/README.md) compares summary-input rules, complete-input rules, and evidence-constrained Codex extraction on the same captured releases. It shares the packaged adapter but retains its extraction-only prompt/schema, without editorial scores, for that comparison. It includes authored controls, quote validation, a bounded model-call budget, saved outputs, and human review materials. Its saved evaluation results are not automatically imported into normal scans and do not validate the editorial ranking rubric.
 
 The model arm requires an explicit command and a local Codex login. It sends the selected notes to the model service; generated data remains in ignored local reports. This is a way to evaluate whether language understanding helps, not evidence that the model already improves recommendations.
 
 ## Current limitations
 
 - Deterministic heuristics require calibration against real use; they are not learned predictions.
-- Model extraction is optional and limited to captured GitHub release notes; it is not semantic clustering or virality prediction. Its suggestions require human review and do not change deterministic recommendations.
+- Model extraction is optional and limited to captured GitHub release notes and selected HN-linked public pages; it is not semantic clustering or virality prediction. Its suggestions require human review and do not change deterministic recommendations.
 - Growth is measured only after local tracking begins.
 - Provider availability, API quotas, upstream schemas, and feed quality constrain results.
 - Presentation is English-oriented using a transparent Latin-script proxy, not full language identification.

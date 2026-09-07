@@ -138,8 +138,9 @@ def run_scan(config_path: Path, *, top: int | None = None, no_youtube: bool = Fa
         youtube_result = youtube.validate(selected, config, youtube_client, started, disabled=no_youtube)
         provider_results.append(youtube_result)
 
-        llm_updates = discover_updates(eligible, config, enabled=config.llm.enabled if llm is None else llm)
-        LOGGER.info("LLM: %s (%d releases, %d new calls, %d cached)", llm_updates["status"],
+        llm_updates = discover_updates(eligible, config, enabled=config.llm.enabled if llm is None else llm,
+            community_items=[item for candidate in selected for item in candidate.items if item.item_type == "hacker_news_story"])
+        LOGGER.info("LLM: %s (%d sources, %d new calls, %d cached)", llm_updates["status"],
                     len(llm_updates["updates"]), llm_updates["new_calls"], llm_updates["cached_results"])
         completed = datetime.now(UTC)
         discovery_partial = any(result.status in {"failed", "partial", "stale"} for result in provider_results[:-1])

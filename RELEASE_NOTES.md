@@ -1,20 +1,22 @@
 # v0.2.0 — AI Trend Radar with optional LLM-discovered updates
 
-Release preparation; not yet published.
+Released September 7, 2026. Alpha software; editorial scores require human judgment.
 
 - The project, Python package, CLI, and GitHub repository are now `ai-trend-radar` / `ai_trend_radar`. Existing checkout directory names can stay unchanged. The old command and import names are not retained.
 - Normal scans optionally extract capability updates from complete GitHub release notes using the locally authenticated Codex CLI. “LLM-discovered updates” is the first report section, with source links, exact quotes, developer value, caveats, and extraction status.
-- Extraction happens before deterministic presentation cutoffs. It does not change ranking, review state, YouTube validation, or Slack briefs. Model suggestions still require human review.
+- LLM enrichment also covers up to five public linked pages from HN stories selected for Top Opportunities, before the release lane under the same model-call cap. It requires page evidence, reports skipped pages, and labels HN submission time separately from product launch time. The reader bounds redirects and content size, validates/pins public addresses, and uses no credentials, cookies, or browser execution.
+- Extraction happens before deterministic presentation cutoffs. It does not change deterministic Discovery Priority, review state, YouTube validation, or Slack briefs. Model suggestions still require human review.
+- LLM topics are globally ranked and numbered by a separate Overall Priority. Developer impact, demo potential, freshness, and audience impact each have their own /100 score and explanation, with a comparison table in that order. Overall weights are 30%/30%/20%/20%. Freshness is calculated; the other three are LLM editorial judgments. Audience impact assesses relevance, not predicted reach. Missing dates/scores remain unavailable rather than invented. Audience is configurable; these scores do not predict views or demand.
 - Model use is opt-in through `scan --llm` or `[llm] enabled = true`; `--no-llm` overrides configuration. Defaults cap releases, calls, input size, and per-call time. Cached successes, abstentions, and failures avoid repeated calls for unchanged notes.
 - Adapter/prompt/schema assets ship in the wheel and are shared with the standalone comparison harness. The harness preserves human CSV labels and supports latest-scan corpus selection.
-- Full report JSON advances from schema 2.0 to 2.1 with additive `llm_updates`. Database schema 2, scoring v1.1, and deterministic extraction release-topic-v1.2 are unchanged.
+- Full report JSON advances to schema 2.3: schema 2.1 introduced `llm_updates`; 2.2 added `ranked_topics` and `ranking`; 2.3 adds source kinds, time/discovery provenance, and coverage metadata for HN page assessment. Editorial rubric is video-topic-v1. Database schema 2, Discovery Priority scoring v1.1, and deterministic extraction release-topic-v1.2 are unchanged.
 - Includes post-v0.1.0 source changes: optional Slack delivery, established-repository tracking, and researcher feedback workflows documented in the README.
 
 ## Updating an existing checkout
 
 Preserve `.env`, `config.toml`, databases, and reports. Update the Git remote to `git@github.com:dharmendrathinks/ai-trend-radar.git`, sync with `uv sync --locked --extra dev`, and change scheduled commands to `ai-trend-radar` if still using the old name. No `[llm]` section means no model calls. To opt in, copy only that section from `config.example.toml`; use an absolute `codex_binary` path for schedulers with a minimal PATH.
 
-Enabling model extraction sends configured GitHub release notes to the model service and consumes the operator's model allowance. Confirm permission, especially for private repositories. Cache data stays local and should not be committed. Failed extractions do not prevent the deterministic report; inspect the separate LLM status. See the README for cache retry and cost bounds.
+Enabling model extraction sends configured GitHub release notes and selected HN linked-page text to the model service and consumes the operator's model allowance. Confirm permission, especially for private repositories. Cache data stays local and should not be committed. Failed extractions do not prevent the deterministic report; inspect the separate LLM status. See the README for cache retry and cost bounds.
 
 ---
 

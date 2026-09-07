@@ -1,5 +1,7 @@
 # Release extraction shadow experiment
 
+Normal scans now use an additional editorial rubric (`llm_assets/editorial.md`) and `scored.schema.json` to assess video-topic priority. This harness intentionally retains the extraction-only `prompt.md` and `response.schema.json` through the shared adapter's default mode. Its review results do not validate editorial scores or topic ranking.
+
 Compare three extraction methods on the same saved releases. This standalone, opt-in evaluation harness shares the packaged adapter with normal scans, but its saved outputs do not alter scores, topicability gates, review decisions, normal reports, the Slack brief, or your schedule. For the shipped optional report section, see the [normal-scan guide](../../README.md#optional-llm-discovered-updates). The shared prompt and response schema live in `src/ai_trend_radar/llm_assets/`; edit them there, not in this directory.
 
 | Arm | Input and method |

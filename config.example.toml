@@ -3,15 +3,17 @@ lookback_days = 7
 top_results = 10
 max_workers = 5
 
-# Optional: sends captured GitHub release notes to the model service using your
-# local Codex login. Confirm permission for every configured repository first.
+# Optional: sends captured GitHub notes and selected HN linked-page text to the
+# model service using your local Codex login. Confirm permission for repositories.
 [llm]
 enabled = false
+audience = "Technical creators and developers interested in AI coding tools, agents, MCP, local AI, developer models, and SDK workflows."
 model = "gpt-5.6-sol"
 reasoning_effort = "low"
 codex_binary = "codex" # Use an absolute path for schedulers with a minimal PATH.
 max_calls_per_scan = 24
 max_releases = 20
+max_hn_stories = 5 # Main-list HN linked pages; 0 disables this lane. Shared model-call cap.
 timeout_seconds = 120
 max_input_chars = 20000
 

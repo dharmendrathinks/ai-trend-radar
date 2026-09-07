@@ -1,0 +1,131 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "angles": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 180
+          },
+          "developer_value": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "evidence_quotes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 3,
+            "items": {
+              "type": "string",
+              "minLength": 5,
+              "maxLength": 1000
+            }
+          },
+          "caveats": {
+            "type": "array",
+            "maxItems": 4,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 300
+            }
+          },
+          "editorial": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "developer_impact": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "score": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "score",
+                  "reason"
+                ]
+              },
+              "demo_potential": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "score": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "score",
+                  "reason"
+                ]
+              },
+              "audience_fit": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "score": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "score",
+                  "reason"
+                ]
+              }
+            },
+            "required": [
+              "developer_impact",
+              "demo_potential",
+              "audience_fit"
+            ]
+          }
+        },
+        "required": [
+          "title",
+          "developer_value",
+          "evidence_quotes",
+          "caveats",
+          "editorial"
+        ]
+      }
+    },
+    "abstain_reason": {
+      "type": "string",
+      "maxLength": 500
+    }
+  },
+  "required": [
+    "angles",
+    "abstain_reason"
+  ]
+}
