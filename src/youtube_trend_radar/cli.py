@@ -32,6 +32,16 @@ def build_parser() -> argparse.ArgumentParser:
     decide.add_argument("--until", help="future ISO timestamp including timezone, for deferred")
     decide.add_argument("--note")
     decide.add_argument("--config", default="config.toml")
+    feedback = subparsers.add_parser("feedback", help="record usefulness and prior awareness for one event")
+    feedback.add_argument("event_id")
+    feedback.add_argument("verdict", choices=["investigate", "brief", "skip"])
+    feedback.add_argument("--known", choices=["yes", "no", "unknown"], default="unknown", help="did you already know this development before Radar surfaced it?")
+    feedback.add_argument("--note")
+    feedback.add_argument("--revision", type=int, help="reject feedback if this report revision is no longer current")
+    feedback.add_argument("--config", default="config.toml")
+    summary = subparsers.add_parser("feedback-summary", help="summarize explicit local feedback without fetching")
+    summary.add_argument("--json", action="store_true", help="machine-readable counts and limitations")
+    summary.add_argument("--config", default="config.toml")
     return parser
 
 
@@ -67,12 +77,14 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, ValueError, RuntimeError, sqlite3.Error, KeyError, TypeError):
             print("Slack notification failed; check SLACK_WEBHOOK_URL, configuration, storage, and latest.brief.json", file=sys.stderr)
             return 1
-    if args.command in {"brief", "decide"}:
+    if args.command in {"brief", "decide", "feedback", "feedback-summary"}:
         from datetime import UTC, datetime
+        import sqlite3
         import sys
         from youtube_trend_radar.config import load_config, ConfigError
         from youtube_trend_radar.db import Database
         from youtube_trend_radar.state import RadarState, render_brief
+        from youtube_trend_radar.feedback import record_feedback, feedback_summary, render_feedback_summary
         try:
             config = load_config(Path(args.config))
             database = Database(config.database_path)
@@ -86,6 +98,13 @@ def main(argv: list[str] | None = None) -> int:
                 brief = state.brief(now, top)
                 print(render_brief(brief), flush=True)
                 state.acknowledge(brief)
+            elif args.command == "feedback":
+                key = record_feedback(database, args.event_id, args.verdict, args.known, now, args.note, args.revision)
+                print(f"{key}: {args.verdict}; already known: {args.known}. Review/defer state unchanged.")
+            elif args.command == "feedback-summary":
+                import json
+                summary = feedback_summary(database)
+                print(json.dumps(summary, indent=2) if args.json else render_feedback_summary(summary))
             else:
                 until = datetime.fromisoformat(args.until.replace("Z", "+00:00")) if args.until else None
                 if until is not None and until.tzinfo is None:
@@ -93,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
                 key = state.decide(args.event_id, args.action, now, until, args.note)
                 print(f"{key}: {args.action}")
             return 0
-        except (ConfigError, ValueError, OSError, RuntimeError) as exc:
+        except (ConfigError, ValueError, OSError, RuntimeError, sqlite3.Error) as exc:
             print(f"{args.command} failed: {exc}", file=sys.stderr)
             return 1
     from youtube_trend_radar.doctor import run_doctor

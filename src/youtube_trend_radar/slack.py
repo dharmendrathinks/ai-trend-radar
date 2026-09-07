@@ -79,6 +79,7 @@ def build_payload(brief: dict[str, Any]) -> dict[str, Any]:
     if shown < total:
         footer = f"Showing {shown} of {total} changes; remaining cards are in the local brief. " + footer
     footer += "\nReview locally: youtube-trend-radar decide EVENT_ID reviewed"
+    footer += "\nRate locally: youtube-trend-radar feedback EVENT_ID investigate --known no (or brief/skip; known yes/no/unknown)."
     blocks.append(_plain(footer))
     return {"text": summary, "blocks": blocks, "unfurl_links": False, "unfurl_media": False}
 

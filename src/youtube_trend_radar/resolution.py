@@ -75,6 +75,7 @@ def is_relevant(item: SourceItem, config: AppConfig) -> bool:
         return True
     community_project = item.title.lower().startswith(("show hn:", "launch hn:"))
     project_item = item.item_type in {
+        "github_repository_snapshot",
         "github_exploratory_repository",
         "github_new_repository",
         "github_observed_growth",

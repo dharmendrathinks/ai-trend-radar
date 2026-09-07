@@ -200,6 +200,8 @@ class RadarState:
         with self.database.connect() as cx:
             for name in ('new', 'updated', 'due'):
                 for item in brief[name]:
+                    cx.execute('INSERT OR IGNORE INTO brief_presentations(event_id,revision,presented_at) VALUES (?,?,?)',
+                               (item['event_id'], item['revision'], brief['generated_at']))
                     cx.execute("UPDATE radar_events SET briefed_revision=MAX(briefed_revision,?) WHERE event_id=? AND revision=?",
                                (item['revision'], item['event_id'], item['revision']))
                     if item.get('decision') in {'deferred', 'reopen'}:
@@ -250,6 +252,7 @@ def render_brief(brief: dict[str, Any]) -> str:
                 lines.extend(['Reminder only; this item does not currently qualify for the main list.', ''])
             lines.extend(f'- {url}' for url in c['source_links'])
             lines.extend(['', f"Review: `youtube-trend-radar decide {item['event_id']} reviewed`", '',
+                          f"Feedback: `youtube-trend-radar feedback {item['event_id']} investigate --known no --revision {item['revision']}` (or `brief` / `skip`; awareness `yes` / `no` / `unknown`).", '',
                           f"Defer: `youtube-trend-radar decide {item['event_id']} deferred --until <ISO timestamp with timezone>`", ''])
     lines.extend(['Unchanged previously presented items are omitted. The full scan report retains discovery and watch lists.', ''])
     return '\n'.join(lines)

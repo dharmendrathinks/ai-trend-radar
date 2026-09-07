@@ -46,6 +46,16 @@ exploration_queries = [
   'topic:local-llm created:>{since} archived:false fork:false',
 ]
 exploration_per_query = 15
+# Older repositories: recent pushes discover candidates, not evidence of popularity.
+# Empty list disables this lane and its follow-up requests. Missing keys also disable it.
+established_queries = [
+  'topic:coding-agent created:<{since} pushed:>{since} stars:>=10 archived:false fork:false is:public',
+  'topic:model-context-protocol created:<{since} pushed:>{since} stars:>=10 archived:false fork:false is:public',
+]
+established_per_query = 5
+established_tracking_limit = 20
+established_followup_per_scan = 10
+established_tracking_days = 14
 release_limit_per_repository = 5
 include_prereleases = false
 

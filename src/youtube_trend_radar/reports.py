@@ -146,6 +146,11 @@ def render_markdown(report: dict[str, Any]) -> str:
         safe_detail = str(detail).replace("|", "\\|")
         lines.append(f"| {provider['provider']} | {provider['status']} | {provider['item_count']} | {provider['request_count']} | {safe_detail} |")
 
+    for provider in report["provider_status"]:
+        tracking = provider.get("details", {}).get("established_tracking")
+        if tracking:
+            lines.extend(["", f"Established repository follow-up: {tracking['active']}/{tracking['limit']} slots; {tracking['sampled']} samples returned this scan (may include cached/stale data). Recent activity starts observation, not a trend claim. Qualifying measured growth appears as its own event."])
+
     lines.extend(["", f"## Top Opportunities — {len(report['recommendations'])} found", ""])
     if not report["recommendations"]:
         lines.extend(["No relevant candidates were found in the configured lookback window.", ""])

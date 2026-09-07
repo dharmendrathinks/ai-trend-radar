@@ -112,6 +112,8 @@ Prefix each command with `uv run youtube-trend-radar`:
 | `decide EVENT_ID reviewed` | Mark one event reviewed |
 | `decide EVENT_ID deferred --until TIMESTAMP` | Suppress one event until a future timestamp with a timezone |
 | `decide EVENT_ID reopen` | Bring an event back into the pending brief when eligible |
+| `feedback EVENT_ID investigate\|brief\|skip --known yes\|no\|unknown` | Record usefulness and whether the development was already known; leaves review/defer state unchanged |
+| `feedback-summary [--json]` | Show local feedback counts, unrated presentations, and source/discovery-origin breakdowns in JSON |
 | `notify` | Send the latest saved brief and retry queued Slack messages; no source fetch |
 | `doctor` | Check configuration, initialize/check storage, and probe source connectivity |
 
@@ -139,6 +141,22 @@ uv run youtube-trend-radar brief --top 5
 ```
 
 Replace `EVENT_ID` with an ID from your report and choose a future deferral deadline; the timestamp above is an example. `brief` prints pending cards and records their presentation. To reread the brief already presented by a scan, open `latest.brief.md`. Rendering a card is not a reviewed decision. Overflow stays pending rather than being marked presented, and failed output can be retried. This local presentation state is separate from Slack delivery receipts.
+
+### Research feedback
+
+Tell Radar whether a development deserves investigation, a brief mention, or a skip. Record prior awareness separately: something can be useful even if you already knew about it.
+
+```bash
+uv run youtube-trend-radar feedback EVENT_ID investigate --known no
+uv run youtube-trend-radar feedback EVENT_ID brief --known yes --note "Useful update, already read the announcement"
+uv run youtube-trend-radar feedback EVENT_ID skip --known unknown --note "Routine maintenance"
+uv run youtube-trend-radar feedback-summary
+uv run youtube-trend-radar feedback-summary --json
+```
+
+These commands work offline and accept `--config`. Missing `--known` stays `unknown`; Radar never assumes a topic was new to you. Feedback applies to the event's current revision. Commands embedded in the local brief include `--revision` to reject ratings after the evidence changes. Repeating feedback corrects the latest judgment while retaining its history. Feedback neither changes ranking nor marks an item reviewed; use `decide` for inbox state.
+
+The summary counts investigate/brief/skip, useful previously unknown events, and rated versus unrated brief presentations. It distinguishes unique events from revisions, so updates do not become extra new discoveries. JSON also groups judgments by source family and discovery origin, including `established_repository_search`. These overlapping, self-selected counts are not precision, recall, or proof that a source caused a discovery. Presentation tracking starts with database schema 2 and records brief output, not confirmed reading or Slack delivery. Legacy presentation history is not fabricated.
 
 Reviewed items can reappear when source text changes (whitespace-only changes are ignored), event interest moves into a stronger band, or a watch item qualifies for the main list. These are deterministic triggers, not semantic novelty judgments. Deferred items stay quiet until their deadline even if evidence changes. An overdue item absent from the latest scan is labeled as not rechecked. The full discovery report continues to show current opportunities regardless of review state.
 
@@ -218,6 +236,8 @@ Compare new settings in `config.example.toml` and `.env.example` with your local
 
 Pause scheduled runs before backup or upgrade. Back up your configured database directory while no Radar process is using it, including SQLite sidecar files and the Slack outbox if present; keep a private copy of your configuration separately. Deleting the radar database resets observed history and decisions. Deleting Slack receipts can cause a previously sent brief to be sent again. There is no historical backfill or downgrade migration command.
 
+The discovery/feedback update adds three SQLite tables and upgrades the database to schema **2**, preserving existing events, observations, and decisions. Older code that supports only schema 1 refuses the upgraded database. Restore a pre-upgrade backup if reverting to that code. New GitHub collection settings are opt-in for existing configurations; copy the desired `established_*` keys from the example. Feedback needs no additional configuration.
+
 For the published snapshot, see the [v0.1.0 release](https://github.com/dharmendrathinks/youtube-trend-radar/releases/tag/v0.1.0), which includes a wheel, source distribution, and checksums. The wheel installs the CLI; example configuration comes from the repository or source distribution. That release was not published to PyPI.
 
 
@@ -227,7 +247,7 @@ For the published snapshot, see the [v0.1.0 release](https://github.com/dharmend
 |---|---|---|
 | Official RSS/Atom feeds | Product releases, changelogs, and authoritative announcements | None |
 | GitHub watched repositories | Releases plus repeated aggregate repository observations | `GITHUB_TOKEN` optional, recommended |
-| GitHub exploration | Newly created AI/developer repositories outside the watchlist | `GITHUB_TOKEN` optional, recommended |
+| GitHub exploration | New repositories plus optional discovery and measured follow-up of older active projects | `GITHUB_TOKEN` optional, recommended |
 | Hacker News | Relevant submissions, points, comments, and observed change | None |
 | Hugging Face | Emerging models and Spaces with supported public metadata | `HF_TOKEN` optional |
 | YouTube | Recent video metadata and direct searches for manual coverage inspection | `YOUTUBE_API_KEY` optional |
@@ -325,12 +345,18 @@ Start with these settings before changing scoring rules:
 |---|---|
 | `github.watched_repositories` | Add `owner/repository` names for known projects you want to follow |
 | `github.exploration_queries` | Broaden discovery beyond the watchlist; `{since}` is replaced from the scan lookback |
+| `github.established_queries` | Search older recently active projects for bounded follow-up; empty or missing disables this lane |
+| `github.established_tracking_limit`, `established_followup_per_scan`, `established_tracking_days` | Bound active projects, follow-up requests per scan, and each observation window |
 | `official.feeds` | Add RSS/Atom feeds with a name and URL; an entity label is optional |
 | `relevance.*` | Adjust the AI/developer vocabulary used to select relevant items |
 | `scan.lookback_days`, `scan.top_results` | Change the event window and maximum number of opportunities |
 | `youtube.enabled`, `youtube.request_budget` | Disable video metadata or bound per-scan searches; the search budget is not an API quota-unit budget |
 
-The default GitHub exploration queries focus on recently created repositories, sorted by stars. They do not discover every older repository that has recently become active. Watchlists complement exploration, and provider result caps limit coverage.
+The original exploration queries keep their own result allowance and star ordering. The example also searches two topics for older, recently pushed public repositories, sorted by update time. Recent pushes and search position are admission signals, not measured attention. GitHub documents [repository search qualifiers](https://docs.github.com/en/search-github/searching-on-github/searching-for-repositories) and [search limits and incomplete results](https://docs.github.com/en/rest/search/search).
+
+The established-project lane checks relevance, excludes watched/private/archived/forked repositories, and retains at most **20** projects for **14 days** in the example. It takes at most **5** results per search and makes at most **10** follow-up metadata requests per scan, even after a project leaves search results. Failures consume a follow-up turn so one failing project cannot monopolize collection. Fixed windows expire; re-admission resets its growth checkpoint. Search caps and limited topics still mean incomplete coverage.
+
+The first observation only starts a baseline; a repository does not become a fresh event just because Radar found it. Subsequent verified measurements must meet the existing `watched_repo_growth_*` thresholds (used for both watched and discovered repository snapshots) before producing an observed-growth event. Cached/stale samples do not count as new measurements. Unchanged counters do not create another fresh event. Full reports show tracking counts while baselines accumulate. This is observed growth, not a claim of accelerating activity.
 
 Relative `paths.database` and `paths.reports` values resolve from the configuration file's directory. Credentials remain in `.env` or the process environment, not TOML.
 
