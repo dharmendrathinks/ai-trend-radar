@@ -4,11 +4,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import Any
 
-from youtube_trend_radar.config import AppConfig
-from youtube_trend_radar.http import CachedHttpClient
-from youtube_trend_radar.models import ProviderResult, SourceItem
-from youtube_trend_radar.providers.common import combined_status, oldest_stale_at
-from youtube_trend_radar.utils import clean_text, compact_error, normalize_url, parse_datetime
+from ai_trend_radar.config import AppConfig
+from ai_trend_radar.http import CachedHttpClient
+from ai_trend_radar.models import ProviderResult, SourceItem
+from ai_trend_radar.providers.common import combined_status, oldest_stale_at
+from ai_trend_radar.utils import clean_text, compact_error, normalize_url, parse_datetime
 
 
 API = "https://hacker-news.firebaseio.com/v0"

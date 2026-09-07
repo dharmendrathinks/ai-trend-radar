@@ -3,7 +3,7 @@ requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [project]
-name = "youtube-trend-radar"
+name = "ai-trend-radar"
 version = "0.1.0"
 description = "An event-first radar for fresh AI and developer-tool YouTube topics."
 readme = "README.md"
@@ -34,15 +34,15 @@ dev = [
 ]
 
 [project.scripts]
-youtube-trend-radar = "youtube_trend_radar.cli:main"
+ai-trend-radar = "ai_trend_radar.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/dharmendrathinks/youtube-trend-radar"
-Repository = "https://github.com/dharmendrathinks/youtube-trend-radar"
-Issues = "https://github.com/dharmendrathinks/youtube-trend-radar/issues"
+Homepage = "https://github.com/dharmendrathinks/ai-trend-radar"
+Repository = "https://github.com/dharmendrathinks/ai-trend-radar"
+Issues = "https://github.com/dharmendrathinks/ai-trend-radar/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/youtube_trend_radar"]
+packages = ["src/ai_trend_radar"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"

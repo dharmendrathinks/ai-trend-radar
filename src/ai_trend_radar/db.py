@@ -8,7 +8,7 @@ from typing import Any, Iterator
 import json
 import sqlite3
 
-from youtube_trend_radar.models import ProviderResult, SourceItem, isoformat
+from ai_trend_radar.models import ProviderResult, SourceItem, isoformat
 
 
 SCHEMA = """
@@ -111,10 +111,10 @@ class Database:
                 connection.execute("ALTER TABLE http_cache ADD COLUMN confirmed_at TEXT")
             if "measurement_kind" not in {r[1] for r in connection.execute("PRAGMA table_info(observations)")}:
                 connection.execute("ALTER TABLE observations ADD COLUMN measurement_kind TEXT NOT NULL DEFAULT 'legacy'")
-            from youtube_trend_radar.state import STATE_SCHEMA
+            from ai_trend_radar.state import STATE_SCHEMA
             connection.executescript(STATE_SCHEMA)
-            from youtube_trend_radar.feedback import FEEDBACK_SCHEMA
-            from youtube_trend_radar.discovery import DISCOVERY_SCHEMA
+            from ai_trend_radar.feedback import FEEDBACK_SCHEMA
+            from ai_trend_radar.discovery import DISCOVERY_SCHEMA
             connection.executescript(FEEDBACK_SCHEMA + DISCOVERY_SCHEMA)
             connection.execute("PRAGMA user_version=2")
 

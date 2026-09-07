@@ -3,14 +3,14 @@ import json
 
 import pytest
 
-from youtube_trend_radar.db import Database
-from youtube_trend_radar.discovery import RepositoryDiscovery
-from youtube_trend_radar.feedback import record_feedback, feedback_summary
-from youtube_trend_radar.http import HttpPayload
-from youtube_trend_radar.models import isoformat
-from youtube_trend_radar.providers.github import collect_exploratory
-from youtube_trend_radar.ranking import eligible_items
-from youtube_trend_radar.state import RadarState
+from ai_trend_radar.db import Database
+from ai_trend_radar.discovery import RepositoryDiscovery
+from ai_trend_radar.feedback import record_feedback, feedback_summary
+from ai_trend_radar.http import HttpPayload
+from ai_trend_radar.models import isoformat
+from ai_trend_radar.providers.github import collect_exploratory
+from ai_trend_radar.ranking import eligible_items
+from ai_trend_radar.state import RadarState
 
 
 NOW = datetime(2026, 9, 6, tzinfo=UTC)
@@ -202,7 +202,7 @@ def test_additive_schema_upgrade_preserves_events_and_does_not_invent_presentati
 
 
 def test_feedback_cli_is_offline_and_summary_explains_limits(discovery, monkeypatch, capsys):
-    from youtube_trend_radar import cli, config as config_module
+    from ai_trend_radar import cli, config as config_module
     db, config = discovery
     seed_event(db)
     monkeypatch.setattr(config_module, 'load_config', lambda _: config)
@@ -214,7 +214,7 @@ def test_feedback_cli_is_offline_and_summary_explains_limits(discovery, monkeypa
 
 
 def test_established_config_limits_and_legacy_opt_out(tmp_path):
-    from youtube_trend_radar.config import load_config, ConfigError
+    from ai_trend_radar.config import load_config, ConfigError
     path = tmp_path / 'config.toml'
     path.write_text('[github]\nestablished_followup_per_scan=21\n')
     with pytest.raises(ConfigError, match='must be <= 20'):
@@ -227,8 +227,8 @@ def test_established_config_limits_and_legacy_opt_out(tmp_path):
 
 
 def test_two_scans_surface_older_growth_and_measure_its_feedback(discovery, monkeypatch):
-    from youtube_trend_radar import pipeline
-    from youtube_trend_radar.models import ProviderResult
+    from ai_trend_radar import pipeline
+    from ai_trend_radar.models import ProviderResult
     db, config = discovery
     at = NOW
 

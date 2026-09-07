@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from youtube_trend_radar.models import ProviderResult, SourceItem
-from youtube_trend_radar import pipeline
+from ai_trend_radar.models import ProviderResult, SourceItem
+from ai_trend_radar import pipeline
 
 
 ROOT = Path(__file__).resolve().parents[1]

@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="youtube-trend-radar", description="Find fresh AI/developer YouTube topic opportunities.")
+    parser = argparse.ArgumentParser(prog="ai-trend-radar", description="Find fresh AI/developer YouTube topic opportunities.")
     parser.add_argument("--verbose", action="store_true", help="enable informational logging")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -54,7 +54,7 @@ def main(argv: list[str] | None = None) -> int:
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 
     if args.command == "scan":
-        from youtube_trend_radar.pipeline import run_scan
+        from ai_trend_radar.pipeline import run_scan
 
         return run_scan(Path(args.config), top=args.top, no_youtube=args.no_youtube, slack=args.slack)
     if args.command == "notify":
@@ -62,8 +62,8 @@ def main(argv: list[str] | None = None) -> int:
         import os
         import sqlite3
         import sys
-        from youtube_trend_radar.config import load_config
-        from youtube_trend_radar.slack import SlackDelivery, validate_webhook
+        from ai_trend_radar.config import load_config
+        from ai_trend_radar.slack import SlackDelivery, validate_webhook
         try:
             webhook = validate_webhook(os.getenv("SLACK_WEBHOOK_URL"))
             config = load_config(Path(args.config))
@@ -81,10 +81,10 @@ def main(argv: list[str] | None = None) -> int:
         from datetime import UTC, datetime
         import sqlite3
         import sys
-        from youtube_trend_radar.config import load_config, ConfigError
-        from youtube_trend_radar.db import Database
-        from youtube_trend_radar.state import RadarState, render_brief
-        from youtube_trend_radar.feedback import record_feedback, feedback_summary, render_feedback_summary
+        from ai_trend_radar.config import load_config, ConfigError
+        from ai_trend_radar.db import Database
+        from ai_trend_radar.state import RadarState, render_brief
+        from ai_trend_radar.feedback import record_feedback, feedback_summary, render_feedback_summary
         try:
             config = load_config(Path(args.config))
             database = Database(config.database_path)
@@ -115,6 +115,6 @@ def main(argv: list[str] | None = None) -> int:
         except (ConfigError, ValueError, OSError, RuntimeError, sqlite3.Error) as exc:
             print(f"{args.command} failed: {exc}", file=sys.stderr)
             return 1
-    from youtube_trend_radar.doctor import run_doctor
+    from ai_trend_radar.doctor import run_doctor
 
     return run_doctor(Path(args.config))

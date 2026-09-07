@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from youtube_trend_radar.models import Candidate, SourceItem
-from youtube_trend_radar.topics import (
+from ai_trend_radar.models import Candidate, SourceItem
+from ai_trend_radar.topics import (
     attach_video_topics,
     extract_release_topic,
     partition_topicable_candidates,

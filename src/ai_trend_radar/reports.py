@@ -8,10 +8,10 @@ import json
 import os
 import tempfile
 
-from youtube_trend_radar.config import AppConfig
-from youtube_trend_radar.models import Candidate, ProviderResult, isoformat
-from youtube_trend_radar.ranking import SCORING_VERSION
-from youtube_trend_radar.resolution import effective_item_time
+from ai_trend_radar.config import AppConfig
+from ai_trend_radar.models import Candidate, ProviderResult, isoformat
+from ai_trend_radar.ranking import SCORING_VERSION
+from ai_trend_radar.resolution import effective_item_time
 
 
 SCHEMA_VERSION = "2.0"
@@ -129,7 +129,7 @@ def _signal_time(signal: dict[str, Any]) -> str:
 
 def render_markdown(report: dict[str, Any]) -> str:
     lines = [
-        "# YouTube Trend Radar",
+        "# AI Trend Radar",
         "",
         f"Generated: {report['generated_at']}",
         f"Scan: `{report['scan_id']}` · Status: **{report['status']}** · Scoring: `{report['scoring_version']}`",

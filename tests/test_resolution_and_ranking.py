@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
-from youtube_trend_radar.config import AppConfig
-from youtube_trend_radar.models import Candidate, SourceItem
-from youtube_trend_radar.ranking import (
+from ai_trend_radar.config import AppConfig
+from ai_trend_radar.models import Candidate, SourceItem
+from ai_trend_radar.ranking import (
     attach_repository_support,
     candidate_is_eligible,
     eligible_items,
@@ -15,7 +15,7 @@ from youtube_trend_radar.ranking import (
     partition_main_list_floor,
     rank_candidates,
 )
-from youtube_trend_radar.resolution import cluster_items, effective_item_time, is_relevant, resolve_items, should_merge
+from ai_trend_radar.resolution import cluster_items, effective_item_time, is_relevant, resolve_items, should_merge
 
 
 NOW = datetime(2026, 9, 1, 12, tzinfo=UTC)

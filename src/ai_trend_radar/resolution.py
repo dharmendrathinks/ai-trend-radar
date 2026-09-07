@@ -6,9 +6,9 @@ from hashlib import sha256
 from urllib.parse import urlsplit
 import re
 
-from youtube_trend_radar.config import AppConfig
-from youtube_trend_radar.models import Candidate, SourceItem
-from youtube_trend_radar.utils import normalize_url
+from ai_trend_radar.config import AppConfig
+from ai_trend_radar.models import Candidate, SourceItem
+from ai_trend_radar.utils import normalize_url
 
 
 TOKEN_RE = re.compile(r"[a-z0-9]+(?:[._-][a-z0-9]+)*")

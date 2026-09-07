@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from youtube_trend_radar.models import isoformat
+from ai_trend_radar.models import isoformat
 
 
 DISCOVERY_SCHEMA = """

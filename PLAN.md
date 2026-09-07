@@ -1,8 +1,8 @@
-# YouTube Trend Radar — Smallest Robust End-to-End V1
+# AI Trend Radar — Smallest Robust End-to-End V1
 
 ## Summary
 
-`youtube-trend-radar` will be a small Python CLI that discovers fresh AI/developer events from live sources, ranks them with transparent deterministic heuristics, and attaches precise YouTube search evidence so a creator can decide what to investigate.
+`ai-trend-radar` will be a small Python CLI that discovers fresh AI/developer events from live sources, ranks them with transparent deterministic heuristics, and attaches precise YouTube search evidence so a creator can decide what to investigate.
 
 V1 is optimized for one complete implementation pass and useful day-one results. It will use official feeds/APIs, SQLite, Markdown and JSON reports, repeated aggregate snapshots, and isolated provider failures. It will not require an LLM, historical calibration, a dashboard, or a custom YouTube crowding metric.
 
@@ -17,7 +17,7 @@ V1 does not claim to calculate an automatic YouTube opportunity score. To keep t
 The primary command will be:
 
 ```text
-youtube-trend-radar scan
+ai-trend-radar scan
 ```
 
 A scan will:
@@ -100,10 +100,10 @@ Development dependencies:
 CLI surface:
 
 ```text
-youtube-trend-radar scan
-youtube-trend-radar scan --config PATH --top N
-youtube-trend-radar scan --no-youtube
-youtube-trend-radar doctor
+ai-trend-radar scan
+ai-trend-radar scan --config PATH --top N
+ai-trend-radar scan --no-youtube
+ai-trend-radar doctor
 ```
 
 `doctor` validates configuration, database access, credentials, and provider connectivity without running a full scan.

@@ -1,10 +1,10 @@
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from youtube_trend_radar.models import SourceItem, ProviderResult
-from youtube_trend_radar.db import Database
-from youtube_trend_radar.resolution import cluster_items, effective_item_time
-from youtube_trend_radar.ranking import attach_repository_support, rank_candidates, evidence
-from youtube_trend_radar.topics import attach_video_topics
+from ai_trend_radar.models import SourceItem, ProviderResult
+from ai_trend_radar.db import Database
+from ai_trend_radar.resolution import cluster_items, effective_item_time
+from ai_trend_radar.ranking import attach_repository_support, rank_candidates, evidence
+from ai_trend_radar.topics import attach_video_topics
 
 NOW = datetime(2026, 9, 1, tzinfo=UTC)
 
@@ -58,8 +58,8 @@ def test_undated_item_uses_first_seen(config):
 
 
 def test_growth_checkpoint_survives_restart_and_unchanged_counts(config):
-    from youtube_trend_radar.state import RadarState
-    from youtube_trend_radar.ranking import eligible_items, freshness_score
+    from ai_trend_radar.state import RadarState
+    from ai_trend_radar.ranking import eligible_items, freshness_score
     db = Database(config.database_path); db.initialize()
     def observe(hours, stars, cache='live'):
         at = NOW + timedelta(hours=hours)
@@ -98,10 +98,10 @@ def test_304_preserves_body_acquisition(config):
     import httpx
     import respx
     from unittest.mock import patch
-    from youtube_trend_radar.http import CachedHttpClient
+    from ai_trend_radar.http import CachedHttpClient
     db = Database(config.database_path); db.initialize()
     client = CachedHttpClient(db, config.http)
-    with respx.mock, patch('youtube_trend_radar.http.datetime') as clock:
+    with respx.mock, patch('ai_trend_radar.http.datetime') as clock:
         clock.now.return_value = NOW
         route = respx.get('https://example.test/metrics').mock(return_value=httpx.Response(200, json={'stars': 10}, headers={'ETag': 'a'}))
         first = client.get('https://example.test/metrics', ttl=timedelta(seconds=-1))
@@ -118,8 +118,8 @@ def test_304_preserves_body_acquisition(config):
 
 def test_full_release_notes_survive_provider_and_extraction(config):
     import json
-    from youtube_trend_radar.http import HttpPayload
-    from youtube_trend_radar.providers.github import collect_watched
+    from ai_trend_radar.http import HttpPayload
+    from ai_trend_radar.providers.github import collect_watched
     body = '## Chores\n' + '- Update internal dependency bookkeeping.\n'*65 + '\n## Features\n- Add MCP tool support for AI coding agents.\n'
     class Client:
         request_count = 0
@@ -140,8 +140,8 @@ def test_full_release_notes_survive_provider_and_extraction(config):
 
 
 def test_brief_reviews_defer_overflow_and_new_versions(config):
-    from youtube_trend_radar.state import RadarState
-    from youtube_trend_radar.reports import _candidate_dict
+    from ai_trend_radar.state import RadarState
+    from ai_trend_radar.reports import _candidate_dict
     db = Database(config.database_path); db.initialize()
     state = RadarState(db)
     def save(items, scan, at=NOW):
@@ -181,7 +181,7 @@ def test_brief_reviews_defer_overflow_and_new_versions(config):
 
 
 def test_event_id_survives_later_exact_support(config):
-    from youtube_trend_radar.state import RadarState
+    from ai_trend_radar.state import RadarState
     db = Database(config.database_path); db.initialize()
     state = RadarState(db)
     a = release()
@@ -194,7 +194,7 @@ def test_event_id_survives_later_exact_support(config):
 
 
 def test_growth_requires_all_gates(config):
-    from youtube_trend_radar.state import RadarState
+    from ai_trend_radar.state import RadarState
     for index, (hours, before, after) in enumerate([(23, 10000, 10100), (48, 100, 110), (48, 100000, 100100), (48, 10000, 9999)]):
         db = Database(config.database_path.parent / f'gate-{index}.sqlite3'); db.initialize()
         state = RadarState(db)
@@ -206,7 +206,7 @@ def test_growth_requires_all_gates(config):
 
 
 def test_native_release_recreation_is_new_but_tag_edit_is_same_event(config):
-    from youtube_trend_radar.state import RadarState
+    from ai_trend_radar.state import RadarState
     db = Database(config.database_path); db.initialize()
     state = RadarState(db)
     first = release(); first.metrics['release_id'] = 1
@@ -235,7 +235,7 @@ def test_project_homepage_discussion_does_not_establish_release_interest(config)
 
 def test_migration_preserves_legacy_data_without_trusting_metric_clocks(config):
     import sqlite3
-    from youtube_trend_radar.db import SCHEMA
+    from ai_trend_radar.db import SCHEMA
     with sqlite3.connect(config.database_path) as cx:
         cx.executescript(SCHEMA)
         cx.execute('INSERT INTO observations VALUES (?,?,?,?)', ('github_watched', 'repo', NOW.isoformat(), '{"stars": 1}'))
@@ -254,10 +254,10 @@ def test_migration_preserves_legacy_data_without_trusting_metric_clocks(config):
 
 
 def test_official_content_field_and_partial_capture(config):
-    from youtube_trend_radar.config import OfficialFeedConfig
-    from youtube_trend_radar.http import HttpPayload
-    from youtube_trend_radar.providers.official import collect
-    from youtube_trend_radar.providers.common import capture_document, MAX_DOCUMENT_CHARACTERS
+    from ai_trend_radar.config import OfficialFeedConfig
+    from ai_trend_radar.http import HttpPayload
+    from ai_trend_radar.providers.official import collect
+    from ai_trend_radar.providers.common import capture_document, MAX_DOCUMENT_CHARACTERS
     config.official_feeds = [OfficialFeedConfig('test', 'https://example.test/feed', 'OpenAI')]
     content = '<p>Full SDK feature description.</p>'
     feed = f'''<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><item>
@@ -280,8 +280,8 @@ def test_official_content_field_and_partial_capture(config):
 
 def test_release_collection_survives_metadata_failure(config):
     import json
-    from youtube_trend_radar.http import HttpPayload
-    from youtube_trend_radar.providers.github import collect_watched
+    from ai_trend_radar.http import HttpPayload
+    from ai_trend_radar.providers.github import collect_watched
     config.github['watched_repositories'] = ['anthropics/claude-code']
     class Client:
         request_count = 0
@@ -298,10 +298,10 @@ def test_release_collection_survives_metadata_failure(config):
 def test_cli_and_failed_brief_delivery_preserve_discoveries(tmp_path, monkeypatch, capsys):
     from pathlib import Path
     import json
-    from youtube_trend_radar import pipeline
-    from youtube_trend_radar.cli import main
-    from youtube_trend_radar.config import load_config
-    from youtube_trend_radar.state import RadarState
+    from ai_trend_radar import pipeline
+    from ai_trend_radar.cli import main
+    from ai_trend_radar.config import load_config
+    from ai_trend_radar.state import RadarState
     config_text = (Path(__file__).resolve().parents[1] / 'config.example.toml').read_text()
     config_path = tmp_path / 'config.toml'; config_path.write_text(config_text)
     now = datetime.now(UTC)
@@ -345,8 +345,8 @@ def test_cli_and_failed_brief_delivery_preserve_discoveries(tmp_path, monkeypatc
 
 
 def test_delivery_does_not_erase_a_new_deferral(config):
-    from youtube_trend_radar.state import RadarState
-    from youtube_trend_radar.reports import _candidate_dict
+    from ai_trend_radar.state import RadarState
+    from ai_trend_radar.reports import _candidate_dict
     db = Database(config.database_path); db.initialize()
     state = RadarState(db)
     candidates = cluster_items([release()], config); state.bind(candidates)

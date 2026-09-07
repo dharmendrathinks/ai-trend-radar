@@ -13,7 +13,7 @@ import time
 
 import httpx
 
-from youtube_trend_radar.db import Database
+from ai_trend_radar.db import Database
 
 
 def validate_webhook(value: str | None) -> str:
@@ -47,7 +47,7 @@ def _link(value: str) -> str | None:
 def build_payload(brief: dict[str, Any]) -> dict[str, Any]:
     counts = ", ".join(f"{len(brief[key])} {label}" for key, label in
                        (("new", "new"), ("updated", "updated"), ("due", "due")))
-    summary = f"YouTube Trend Radar — {counts}"
+    summary = f"AI Trend Radar — {counts}"
     blocks = [_plain(f"{summary}\nGenerated: {brief['generated_at']}\nScan: {brief['scan_id']}")]
     gaps = [f"{_short(p['provider'], 60)} ({p['status']})" for p in brief.get("provider_status", [])
             if p["status"] in {"failed", "partial", "stale"}]
@@ -78,8 +78,8 @@ def build_payload(brief: dict[str, Any]) -> dict[str, Any]:
         footer = "No new qualifying changes in this scan. " + footer
     if shown < total:
         footer = f"Showing {shown} of {total} changes; remaining cards are in the local brief. " + footer
-    footer += "\nReview locally: youtube-trend-radar decide EVENT_ID reviewed"
-    footer += "\nRate locally: youtube-trend-radar feedback EVENT_ID investigate --known no (or brief/skip; known yes/no/unknown)."
+    footer += "\nReview locally: ai-trend-radar decide EVENT_ID reviewed"
+    footer += "\nRate locally: ai-trend-radar feedback EVENT_ID investigate --known no (or brief/skip; known yes/no/unknown)."
     blocks.append(_plain(footer))
     return {"text": summary, "blocks": blocks, "unfurl_links": False, "unfurl_media": False}
 

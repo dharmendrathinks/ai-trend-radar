@@ -5,13 +5,13 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import respx
 
-from youtube_trend_radar.config import AppConfig
-from youtube_trend_radar.db import Database
-from youtube_trend_radar.http import CachedHttpClient
-from youtube_trend_radar.models import Candidate, ProviderResult, SourceItem
-from youtube_trend_radar.providers.youtube import build_queries, build_viewer_intent, validate
-from youtube_trend_radar.reports import build_report, render_markdown
-from youtube_trend_radar.topics import attach_video_topics
+from ai_trend_radar.config import AppConfig
+from ai_trend_radar.db import Database
+from ai_trend_radar.http import CachedHttpClient
+from ai_trend_radar.models import Candidate, ProviderResult, SourceItem
+from ai_trend_radar.providers.youtube import build_queries, build_viewer_intent, validate
+from ai_trend_radar.reports import build_report, render_markdown
+from ai_trend_radar.topics import attach_video_topics
 
 
 NOW = datetime(2026, 9, 1, 12, tzinfo=UTC)

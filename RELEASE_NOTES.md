@@ -1,5 +1,7 @@
 # v0.1.0 — First public release
 
+> Historical release: this release was published as YouTube Trend Radar. The project was subsequently renamed to AI Trend Radar (`ai-trend-radar`, Python package `ai_trend_radar`). The original release artifacts and instructions below retain their original names; use the [README](README.md) for current-source installation and commands.
+
 YouTube Trend Radar is an open-source, local CLI for discovering promising AI and developer-tool topics, inspecting the evidence, and deciding what deserves further research. This first release includes the complete product built so far, including the correctness fixes and changes-only brief.
 
 The radar starts with upstream events and developer activity. YouTube supplies downstream coverage evidence for human inspection. There is no runtime LLM requirement, and YouTube evidence does not affect discovery ranking.

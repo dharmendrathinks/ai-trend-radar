@@ -1,4 +1,4 @@
-# Strategic review: evolving YouTube Trend Radar into developer intelligence
+# Strategic review: evolving AI Trend Radar into developer intelligence
 
 **Review date: September 6, 2026**  
 **Repository reviewed: `a086a8d`**  
@@ -63,7 +63,7 @@ The current priority formula is:
 0.60 × Freshness + 0.25 × Evidence Strength + 0.15 × Interest
 ```
 
-The pipeline is explicitly optimized for a creator deciding what to inspect, not for predicting video performance. [Current pipeline](src/youtube_trend_radar/pipeline.py)
+The pipeline is explicitly optimized for a creator deciding what to inspect, not for predicting video performance. [Current pipeline](src/ai_trend_radar/pipeline.py)
 
 ### Intentional boundaries
 
@@ -126,7 +126,7 @@ I reproduced this with an unchanged star count:
 | 24 hours later | 0 | 100 | 88.75 |
 | 240 hours later | 0 | 100 | 88.75 |
 
-This is not invented historical growth—the original increase really was observed. But it **misrepresents an old accumulated increase as a new development**. [Growth calculation](src/youtube_trend_radar/db.py), [event trigger](src/youtube_trend_radar/ranking.py)
+This is not invented historical growth—the original increase really was observed. But it **misrepresents an old accumulated increase as a new development**. [Growth calculation](src/ai_trend_radar/db.py), [event trigger](src/ai_trend_radar/ranking.py)
 
 **Consequence:** Long-running operation can become less informative even while the database accumulates more observations.
 
@@ -134,7 +134,7 @@ This is not invented historical growth—the original increase really was observ
 
 **FACT:** The September 4 report contains ten recommendations but only eight distinct fingerprints. Different Codex releases share one fingerprint; different Claude Code releases share another.
 
-The fingerprint uses the first sorted anchor. A shared feature or model anchor can precede the release-specific anchor and collapse identity without actually merging the candidates. [Fingerprint implementation](src/youtube_trend_radar/resolution.py)
+The fingerprint uses the first sorted anchor. A shared feature or model anchor can precede the release-specific anchor and collapse identity without actually merging the candidates. [Fingerprint implementation](src/ai_trend_radar/resolution.py)
 
 **Consequence:** These IDs cannot safely support saved investigations, feedback, alert deduplication, or event timelines.
 
@@ -188,7 +188,7 @@ A technically important development can therefore disappear from the primary lis
 - A configuration fingerprint is stored, but not a complete effective execution manifest.
 - All 19 local scans use scoring version `v1.0`, despite substantial development across those scans.
 
-[Persistence model](src/youtube_trend_radar/db.py)
+[Persistence model](src/ai_trend_radar/db.py)
 
 **Consequence:** A report can explain parts of an output, but cannot reliably reconstruct everything the system knew and did at that point.
 
@@ -196,7 +196,7 @@ A technically important development can therefore disappear from the primary lis
 
 **FACT:** Release summaries are normalized and truncated to 2,000 characters. Twenty current source records reach that limit.
 
-The topic extractor favors qualifying sections and bullet order; it does not assess which change produces the most useful developer story. It operates on GitHub releases, while general official announcements do not pass through equivalent topic extraction. [Topic extraction](src/youtube_trend_radar/topics.py)
+The topic extractor favors qualifying sections and bullet order; it does not assess which change produces the most useful developer story. It operates on GitHub releases, while general official announcements do not pass through equivalent topic extraction. [Topic extraction](src/ai_trend_radar/topics.py)
 
 **INFERENCE:** Adding an LLM to truncated notes would automate an incomplete view. Preserve permitted full content and structure first.
 

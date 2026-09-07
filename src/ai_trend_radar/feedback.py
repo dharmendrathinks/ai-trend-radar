@@ -6,7 +6,7 @@ from datetime import datetime
 import json
 import re
 
-from youtube_trend_radar.models import isoformat
+from ai_trend_radar.models import isoformat
 
 
 FEEDBACK_SCHEMA = """

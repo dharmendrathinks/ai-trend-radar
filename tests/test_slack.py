@@ -9,10 +9,10 @@ import httpx
 import pytest
 import respx
 
-from youtube_trend_radar import pipeline
-from youtube_trend_radar.cli import main
-from youtube_trend_radar.models import ProviderResult, SourceItem
-from youtube_trend_radar.slack import SlackDelivery, build_payload, validate_webhook
+from ai_trend_radar import pipeline
+from ai_trend_radar.cli import main
+from ai_trend_radar.models import ProviderResult, SourceItem
+from ai_trend_radar.slack import SlackDelivery, build_payload, validate_webhook
 
 
 WEBHOOK = "https://hooks.slack.com/services/TTEST/BTEST/test-secret"
@@ -37,7 +37,7 @@ def brief():
 @pytest.fixture(autouse=True)
 def slack_test_environment(monkeypatch):
     monkeypatch.setenv("SLACK_WEBHOOK_URL", WEBHOOK)
-    monkeypatch.setattr("youtube_trend_radar.slack.time.sleep", lambda _: None)
+    monkeypatch.setattr("ai_trend_radar.slack.time.sleep", lambda _: None)
 
 
 def test_payload_keeps_grounding_warnings_and_limits_without_mentions(brief):
@@ -98,14 +98,14 @@ def test_outbox_retries_failure_survives_restart_and_deduplicates(config, brief,
 
 @respx.mock
 def test_rate_limit_is_persisted_and_respected_on_restart(config, brief, monkeypatch):
-    monkeypatch.setattr("youtube_trend_radar.slack.time.time", lambda: 1000)
+    monkeypatch.setattr("ai_trend_radar.slack.time.time", lambda: 1000)
     route = respx.post(WEBHOOK).mock(return_value=httpx.Response(429, headers={"Retry-After": "120"}))
     delivery = SlackDelivery(config.database_path, WEBHOOK)
     delivery.enqueue(brief)
     assert delivery.send_pending() == (0, 1)
     assert SlackDelivery(config.database_path, WEBHOOK).send_pending() == (0, 1)
     assert route.call_count == 1
-    monkeypatch.setattr("youtube_trend_radar.slack.time.time", lambda: 1121)
+    monkeypatch.setattr("ai_trend_radar.slack.time.time", lambda: 1121)
     route.mock(return_value=httpx.Response(200, text="ok"))
     assert delivery.send_pending() == (1, 0)
 
@@ -182,8 +182,8 @@ def test_scans_are_opt_in_and_pending_briefs_survive_later_scan(tmp_path, monkey
 
 
 def test_queue_write_failure_does_not_acknowledge_brief(tmp_path, monkeypatch):
-    from youtube_trend_radar.db import Database
-    from youtube_trend_radar.state import RadarState
+    from ai_trend_radar.db import Database
+    from ai_trend_radar.state import RadarState
     config_path = _mock_scan(tmp_path, monkeypatch)
     def fail(*args):
         raise OSError("disk full")

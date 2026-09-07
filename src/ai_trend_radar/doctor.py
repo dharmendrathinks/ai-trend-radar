@@ -6,11 +6,11 @@ import os
 
 from huggingface_hub import HfApi
 
-from youtube_trend_radar.config import ConfigError, load_config
-from youtube_trend_radar.db import Database
-from youtube_trend_radar.http import CachedHttpClient
-from youtube_trend_radar.providers import github
-from youtube_trend_radar.utils import compact_error
+from ai_trend_radar.config import ConfigError, load_config
+from ai_trend_radar.db import Database
+from ai_trend_radar.http import CachedHttpClient
+from ai_trend_radar.providers import github
+from ai_trend_radar.utils import compact_error
 
 
 def run_doctor(config_path: Path) -> int:
