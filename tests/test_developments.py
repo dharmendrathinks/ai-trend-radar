@@ -329,9 +329,17 @@ def test_slack_contains_developer_questions_and_topic_ids(config, model):
     topics, _ = dev.assess_candidates([c], config, NOW, enabled=True)
     state.save_topics(topics, 'first')
     save_scan(db, 'first')
-    rendered = json.dumps(build_payload(state.brief(NOW, 10, 'first')))
-    assert all(phrase in rendered for phrase in ['What changed:', 'Who should care:', 'Practical difference:', 'TOPIC_ID'])
+    brief = state.brief(NOW, 10, 'first')
+    rendered = json.dumps(build_payload(brief))
+    assert all(phrase in rendered for phrase in ['Changed:', 'For:', 'Practical impact:', '77/100', 'Impact 80', 'Relevance 90', 'Urgency 50'])
+    assert all(t['topic_id'] in rendered for t in topics)
     assert 'Demo potential' not in rendered
+    state.acknowledge(brief)
+    state.save_topics(topics, 'second')
+    save_scan(db, 'second')
+    unchanged = json.dumps(build_payload(state.brief(NOW, 10, 'second')))
+    assert 'No new qualifying changes' in unchanged
+    assert all(t['topic_id'] not in unchanged for t in topics)
 
 
 def test_plan_files_and_active_document_links():
