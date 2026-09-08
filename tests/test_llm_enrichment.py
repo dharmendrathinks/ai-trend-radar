@@ -25,6 +25,19 @@ def release(tag="v0.33.3", **overrides):
 
 
 def valid(evidence, *_):
+    if 'blocks' in evidence:
+        block = evidence['blocks'][0]
+        return {'status': 'valid', 'errors': [], 'tool_items': [], 'response': {
+            'developments': [{'title': 'Gemma4 image and audio support on MLX',
+                'primary_evidence_id': block['evidence_id'], 'change_kind': 'capability',
+                'what_changed': 'Gemma4 supports image and audio inputs on MLX.',
+                'who_should_care': 'Developers using local models on MLX.',
+                'practical_difference': 'Evaluate multimodal input in local applications.',
+                'evidence_type': 'publisher statement',
+                'evidence_quotes': [{'evidence_id': block['evidence_id'], 'quote': block['text']}],
+                'caveats': ['Hardware requirements are not stated.'], 'next_step': '',
+                'editorial': {k: {'score': 75, 'reason': 'A documented developer capability.'} for k in ('developer_impact', 'developer_relevance', 'urgency')}}],
+            'abstain_reason': ''}}
     return {"status": "valid", "errors": [], "tool_items": [], "turn_completed": True,
         "response": {"angles": [{"title": "Gemma4 image and audio support on MLX",
             "developer_value": "Try image and audio inputs with Gemma4 on MLX.",
@@ -146,7 +159,7 @@ def test_llm_section_first_and_schema_additive(config, model):
     ]
 
 
-def test_low_ranked_release_survives_as_supplement_only(tmp_path, monkeypatch, model):
+def test_low_freshness_release_can_enter_unified_developer_list(tmp_path, monkeypatch, model):
     root = Path(__file__).resolve().parents[1]
     path = tmp_path / "config.toml"
     path.write_text((root / "config.example.toml").read_text())
@@ -161,9 +174,11 @@ def test_low_ranked_release_survives_as_supplement_only(tmp_path, monkeypatch, m
     normal = json.loads((tmp_path / "reports/latest.json").read_text())
     assert pipeline.run_scan(path, no_youtube=True, llm=True) == 0
     enriched = json.loads((tmp_path / "reports/latest.json").read_text())
-    assert not normal["recommendations"] and not enriched["recommendations"]
-    assert len(enriched["llm_updates"]["updates"]) == 1
-    assert normal["release_watch"][0]["discovery_priority"] == enriched["release_watch"][0]["discovery_priority"]
+    assert not normal["recommendations"]
+    assert len(enriched["recommendations"]) == 1
+    assert 'llm_updates' not in enriched
+    assert enriched['schema_version'] == '3.0'
+    assert normal['watch'][0]['discovery_priority'] == enriched['recommendations'][0]['discovery_priority']
     brief = json.loads((tmp_path / "reports/latest.brief.json").read_text())
     assert "llm_updates" not in brief
 
@@ -346,6 +361,7 @@ def test_hn_uses_page_prompt_not_release_prompt(config, monkeypatch):
 
 
 def test_pipeline_sends_main_list_hn_to_page_enrichment(tmp_path, monkeypatch, model):
+    from ai_trend_radar import developments
     root = Path(__file__).resolve().parents[1]
     path = tmp_path / "config.toml"
     path.write_text((root / "config.example.toml").read_text())
@@ -356,9 +372,10 @@ def test_pipeline_sends_main_list_hn_to_page_enrichment(tmp_path, monkeypatch, m
     monkeypatch.setattr(pipeline.hackernews, "collect", lambda *_: ProviderResult("hacker_news", "ok", [story], NOW))
     monkeypatch.setattr(pipeline.huggingface, "collect", lambda *_: ProviderResult("huggingface", "ok", [], NOW))
     monkeypatch.setattr(pipeline.youtube, "validate", lambda *_, **kw: ProviderResult("youtube", "disabled", [], NOW))
-    monkeypatch.setattr(enrichment, "fetch_page", lambda url, _: {"text": NOTES, "final_url": url,
+    monkeypatch.setattr(developments, "fetch_page", lambda url, _: {"text": NOTES, "final_url": url,
         "fetched_at": NOW.isoformat(), "cache_state": "live"})
     assert pipeline.run_scan(path, llm=True, no_youtube=True) == 0
     report = json.loads((tmp_path / "reports/latest.json").read_text())
     assert report["recommendations"][0]["observed_signals"][0]["external_id"] == "123"
-    assert report["llm_updates"]["ranked_topics"][0]["source_kind"] == "hacker_news_page"
+    assert report['recommendations'][0]['assessment_status'] == 'assessed'
+    assert 'HN submission time' in report['recommendations'][0]['event_time_basis']

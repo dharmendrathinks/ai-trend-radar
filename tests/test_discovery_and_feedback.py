@@ -196,7 +196,7 @@ def test_additive_schema_upgrade_preserves_events_and_does_not_invent_presentati
     db.initialize()
     db.initialize()
     with db.connect() as cx:
-        assert cx.execute('PRAGMA user_version').fetchone()[0] == 2
+        assert cx.execute('PRAGMA user_version').fetchone()[0] == 3
         assert cx.execute('SELECT COUNT(*) FROM radar_events').fetchone()[0] == 1
         assert cx.execute('SELECT COUNT(*) FROM brief_presentations').fetchone()[0] == 0
 
@@ -206,7 +206,7 @@ def test_feedback_cli_is_offline_and_summary_explains_limits(discovery, monkeypa
     db, config = discovery
     seed_event(db)
     monkeypatch.setattr(config_module, 'load_config', lambda _: config)
-    assert cli.main(['feedback', 'abcd', 'investigate', '--known', 'no', '--revision', '1']) == 0
+    assert cli.main(['feedback', 'abcd', 'investigate', '--known', 'no', '--revision', '1', '--event']) == 0
     assert cli.main(['feedback-summary', '--json']) == 0
     output = capsys.readouterr().out
     assert '"useful_previously_unknown_events": 1' in output

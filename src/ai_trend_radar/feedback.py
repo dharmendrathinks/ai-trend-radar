@@ -48,7 +48,7 @@ def record_feedback(database, event_id: str, verdict: str, known: str, now: date
     return row['event_id']
 
 
-def feedback_summary(database) -> dict:
+def feedback_summary(database, scope: str = "all") -> dict:
     with database.connect() as cx:
         cx.execute('BEGIN')
         rows = cx.execute('''SELECT f.* FROM research_feedback f JOIN
@@ -56,6 +56,12 @@ def feedback_summary(database) -> dict:
                              ON f.id=latest.id''').fetchall()
         presentations = {(r[0], r[1]) for r in cx.execute('SELECT event_id,revision FROM brief_presentations')}
         history_count = cx.execute('SELECT COUNT(*) FROM research_feedback').fetchone()[0]
+        topic_ids = {r[0] for r in cx.execute('SELECT topic_id FROM development_topics')}
+        if scope in {'topics', 'legacy'}:
+            include = lambda key: (key in topic_ids) == (scope == 'topics')
+            rows = [r for r in rows if include(r['event_id'])]
+            presentations = {p for p in presentations if include(p[0])}
+            history_count = sum(include(r[0]) for r in cx.execute('SELECT event_id FROM research_feedback'))
     judgments = Counter(r['verdict'] for r in rows)
     known = Counter(r['already_known'] for r in rows)
     rated = {(r['event_id'], r['revision']) for r in rows}
@@ -69,7 +75,7 @@ def feedback_summary(database) -> dict:
                 counts['useful_previously_unknown_revisions'] += row['already_known'] == 'no' and row['verdict'] in {'investigate', 'brief'}
         return sources
     return {
-        'scope': 'all-time explicit feedback; latest judgment per event revision',
+        'scope': f'{scope}: all-time explicit feedback; latest judgment per revision',
         'presented_revisions': len(presentations), 'rated_presented_revisions': len(presentations & rated),
         'unrated_presented_revisions': len(presentations - rated),
         'rated_revisions': len(rows), 'rated_unique_events': len({r['event_id'] for r in rows}),
@@ -86,11 +92,12 @@ def feedback_summary(database) -> dict:
 
 def render_feedback_summary(summary: dict) -> str:
     verdicts = summary['verdicts']
+    unit = 'developments' if summary['scope'].startswith('topics:') else 'events'
     return '\n'.join([
-        'Research feedback (latest judgment per event revision)',
-        f"Rated: {summary['rated_revisions']} revisions across {summary['rated_unique_events']} events.",
+        f'Research feedback (latest judgment per {unit} revision)',
+        f"Rated: {summary['rated_revisions']} revisions across {summary['rated_unique_events']} {unit}.",
         f"Investigate: {verdicts['investigate']} · Brief mention: {verdicts['brief']} · Skip: {verdicts['skip']}",
-        f"Useful and previously unknown: {summary['useful_previously_unknown_events']} events ({summary['useful_previously_unknown_revisions']} revisions).",
+        f"Useful and previously unknown: {summary['useful_previously_unknown_events']} {unit} ({summary['useful_previously_unknown_revisions']} revisions).",
         f"Already known: {summary['already_known']['yes']} · Awareness unknown: {summary['already_known']['unknown']}",
         f"Brief coverage: {summary['rated_presented_revisions']}/{summary['presented_revisions']} presented revisions rated; {summary['unrated_presented_revisions']} unrated.",
         summary['limitations'],

@@ -1,5 +1,38 @@
 # Strategic review: evolving AI Trend Radar into developer intelligence
 
+## Status update — September 7, 2026
+
+This is a historical strategic review of `a086a8d`, not the current implementation
+inventory. The active agreed plan is [Developer-first redesign](developer-first-plan.md).
+Its audience, scoring and delivery decisions supersede conflicting recommendations
+below. Historical external research has not been re-verified in this update.
+
+September 8 release update: the developer-first redesign is included in v0.3.0.
+See [release notes](../RELEASE_NOTES.md) for current behavior and migration guidance;
+the comparison below preserves the September 7 planning snapshot.
+
+Checked against the v0.2.0 source and release notes:
+
+| Area | Shipped through v0.2.0 | New redesign |
+|---|---|---|
+| Identity | Repo/CLI/package renamed to AI Trend Radar | Keep names and checkout path |
+| LLM | Optional isolated Codex extraction, bounded calls and versioned caches | Assess every existing source family |
+| Evidence | Complete GitHub notes and up to five selected HN linked pages; literal quote checks | Add bounded official articles, README/model cards and explicit evidence types |
+| Report | LLM updates first, globally numbered, comparison table | One developer-focused list |
+| Scoring | Impact/demo/freshness/audience each /100, weights 30/30/20/20 | Impact/relevance/urgency at 50/30/20; no video score |
+| Review | Event-level decisions and researcher feedback | Individual developments; preserve legacy history |
+| Delivery | Changes-only brief and optional Slack | Same developments as the unified report |
+| Discovery | Established-repository tracking alongside existing providers | Consequence-aware selection before presentation cutoffs |
+| Evaluation | Standalone extraction comparison harness | Developer-first fixtures and isolated review scan |
+| Versions | Report 2.3, database 2, Discovery Priority v1.1 | Report/brief 3.0 and database 3 |
+
+In particular, “No runtime LLM,” “Do not build yet: LLM enrichment,” and references
+to future Slack/feedback support below describe the September 6 baseline, not
+v0.2.0. The previous LLM/scoring/HN changes were documented in
+[release notes](../RELEASE_NOTES.md), but had not been reconciled into this roadmap.
+
+---
+
 **Review date: September 6, 2026**  
 **Repository reviewed: `a086a8d`**  
 **Horizon: September 2026–September 2028**
@@ -63,7 +96,7 @@ The current priority formula is:
 0.60 × Freshness + 0.25 × Evidence Strength + 0.15 × Interest
 ```
 
-The pipeline is explicitly optimized for a creator deciding what to inspect, not for predicting video performance. [Current pipeline](src/ai_trend_radar/pipeline.py)
+The pipeline is explicitly optimized for a creator deciding what to inspect, not for predicting video performance. [Current pipeline](../src/ai_trend_radar/pipeline.py)
 
 ### Intentional boundaries
 
@@ -126,7 +159,7 @@ I reproduced this with an unchanged star count:
 | 24 hours later | 0 | 100 | 88.75 |
 | 240 hours later | 0 | 100 | 88.75 |
 
-This is not invented historical growth—the original increase really was observed. But it **misrepresents an old accumulated increase as a new development**. [Growth calculation](src/ai_trend_radar/db.py), [event trigger](src/ai_trend_radar/ranking.py)
+This is not invented historical growth—the original increase really was observed. But it **misrepresents an old accumulated increase as a new development**. [Growth calculation](../src/ai_trend_radar/db.py), [event trigger](../src/ai_trend_radar/ranking.py)
 
 **Consequence:** Long-running operation can become less informative even while the database accumulates more observations.
 
@@ -134,7 +167,7 @@ This is not invented historical growth—the original increase really was observ
 
 **FACT:** The September 4 report contains ten recommendations but only eight distinct fingerprints. Different Codex releases share one fingerprint; different Claude Code releases share another.
 
-The fingerprint uses the first sorted anchor. A shared feature or model anchor can precede the release-specific anchor and collapse identity without actually merging the candidates. [Fingerprint implementation](src/ai_trend_radar/resolution.py)
+The fingerprint uses the first sorted anchor. A shared feature or model anchor can precede the release-specific anchor and collapse identity without actually merging the candidates. [Fingerprint implementation](../src/ai_trend_radar/resolution.py)
 
 **Consequence:** These IDs cannot safely support saved investigations, feedback, alert deduplication, or event timelines.
 
@@ -150,7 +183,7 @@ In the September 4 report:
 - Six use the GitHub star-delta rule for their interest classification.
 - A low-specificity Codex release is promoted by that rule.
 
-[Saved September 4 report](reports/scan-20260904T130401.021295Z-21773ea3b5.json)
+[Saved September 4 report](../reports/scan-20260904T130401.021295Z-21773ea3b5.json)
 
 **INFERENCE:** The current system conflates attention to a project with interest in a particular release. It should show repository growth as contextual evidence unless a defensible relationship to the event is established.
 
@@ -188,7 +221,7 @@ A technically important development can therefore disappear from the primary lis
 - A configuration fingerprint is stored, but not a complete effective execution manifest.
 - All 19 local scans use scoring version `v1.0`, despite substantial development across those scans.
 
-[Persistence model](src/ai_trend_radar/db.py)
+[Persistence model](../src/ai_trend_radar/db.py)
 
 **Consequence:** A report can explain parts of an output, but cannot reliably reconstruct everything the system knew and did at that point.
 
@@ -196,7 +229,7 @@ A technically important development can therefore disappear from the primary lis
 
 **FACT:** Release summaries are normalized and truncated to 2,000 characters. Twenty current source records reach that limit.
 
-The topic extractor favors qualifying sections and bullet order; it does not assess which change produces the most useful developer story. It operates on GitHub releases, while general official announcements do not pass through equivalent topic extraction. [Topic extraction](src/ai_trend_radar/topics.py)
+The topic extractor favors qualifying sections and bullet order; it does not assess which change produces the most useful developer story. It operates on GitHub releases, while general official announcements do not pass through equivalent topic extraction. [Topic extraction](../src/ai_trend_radar/topics.py)
 
 **INFERENCE:** Adding an LLM to truncated notes would automate an incomplete view. Preserve permitted full content and structure first.
 

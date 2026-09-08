@@ -1,3 +1,68 @@
+# v0.3.0 — Developer-first AI radar
+
+Released September 8, 2026. Alpha software; editorial scores require human judgment.
+
+- One developer-focused list answers what changed, who should care and practical consequences.
+- Separate developments within a release receive impact/relevance/urgency scores
+  out of 100; overall weights are 50/30/20. No video-worthiness scoring.
+- All existing source families are eligible for bounded source-grounded assessment.
+  Consequential fixes remain eligible; N/A discoveries remain visible without invented scores.
+  Deterministic extraction advances to `release-topic-v1.3`; the existing Discovery
+  Priority calculation stays v1.1 as a separate fallback baseline.
+- Topic-level review, changes briefs and Slack formatting share the same developments.
+  Stable source anchors replace title/score-derived topic identities.
+- Full/brief report schema 3.0 and additive database schema 3 with pre-upgrade SQLite
+  backup. Initial topics can inherit current legacy review/defer state; old feedback
+  stays separate. Legacy operations require explicit `--event`.
+- `[developer] audience` supersedes the deprecated `llm.audience` fallback. YouTube
+  is off by default and available only as an explicit optional appendix.
+- Plans now live in [docs](docs/README.md), including the agreed developer-first
+  plan and a shipped-v0.2.0 audit of the historical roadmap.
+
+## Upgrading from v0.2.0
+
+Preserve `.env`, `config.toml`, databases and reports; do not overwrite local
+configuration with the example. Update the checkout to `v0.3.0` and run
+`uv sync --locked --extra dev`. Package, CLI and import names are unchanged.
+
+- Database initialization upgrades schemas 1/2 to 3 and creates a SQLite backup
+  named `<database filename>.pre-v3.bak` before migration (an existing backup is
+  preserved). Validate on a copy first, avoid overlapping processes and keep a
+  separate pre-upgrade backup. Do not run an older release against upgraded state;
+  rolling back requires restoring a compatible backup with all writers stopped.
+- JSON consumers must adopt full-report and brief schema `3.0`: one list of
+  individual developments replaces the separate `llm_updates` section. The
+  developer-priority rubric is `developer-priority-v1`. Use topic IDs for review
+  and feedback; legacy event operations require `--event`.
+- LLM use remains opt-in. Existing explicit settings still apply. Add
+  `[developer] audience` to customize the target developers; `llm.audience` remains
+  a deprecated fallback. Additional captured/public source text can be sent to the
+  configured model; confirm permission for the inputs you enable.
+- YouTube defaults off, but existing explicit opt-ins remain effective. Remove
+  the opt-in or use `--no-youtube` if you no longer want that appendix.
+- Installing this release does not refresh production reports or databases.
+  The next state-using command may initialize/migrate the database.
+
+## Validation and known limitations
+
+217 automated tests pass on Python 3.12 and 3.13. The package build and installed-wheel
+CLI/assessment assets are checked separately. An isolated live scan plus captured
+replay used 24 new model calls in total; no production state was used for migration
+testing. See the [validation record](docs/developer-first-validation.md).
+
+Coverage remains bounded and editorial, not an exhaustive or independently verified
+ranking. Missing/failed assessments remain N/A rather than receiving invented
+scores. Pod's assessment still failed literal-quote validation during the isolated
+review. Reddit is not included. No new live scan or Slack delivery is part of this release.
+
+## Assets and verification
+
+The GitHub release includes a wheel, source distribution and `SHA256SUMS`. Download
+them together and run `shasum -a 256 -c SHA256SUMS` (or `sha256sum -c SHA256SUMS`).
+The wheel includes legacy and developer LLM prompts/schemas; source configuration
+examples ship in the source archive. Runtime reports, databases, caches and local
+credentials are excluded. GitHub distribution only; not published to PyPI.
+
 # v0.2.0 — AI Trend Radar with optional LLM-discovered updates
 
 Released September 7, 2026. Alpha software; editorial scores require human judgment.
@@ -131,7 +196,7 @@ YouTube competition remains a human judgment. Optional local relevance annotatio
 
 There is no LLM extraction experiment, prospective effectiveness study, story graph, semantic clustering, dashboard, hosted service, alert delivery, or broad new provider integration in this release. Exact historical replay is not guaranteed.
 
-The repository includes `plan_v2.md`, the strategic review of the pre-implementation repository and longer-term possibilities. Its findings describe that review snapshot; its roadmap is not a claim that those capabilities have shipped.
+The repository includes [docs/plan_v2.md](docs/plan_v2.md), the strategic review of the pre-implementation repository and longer-term possibilities. Its findings describe that review snapshot; its roadmap is not a claim that those capabilities have shipped.
 
 ## Project
 

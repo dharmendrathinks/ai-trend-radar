@@ -111,7 +111,8 @@ def _request(url: str, target: tuple[str, str, int, str], timeout: float, user_a
         sock.close()
 
 
-def fetch_page(url: str, config: AppConfig) -> dict:
+def cached_page(url: str, config: AppConfig) -> dict | None:
+    """Read an intact, unexpired document without DNS or network activity."""
     now = datetime.now(UTC)
     cache = config.database_path.with_suffix(".pages") / f"{digest([VERSION, url])}.json"
     try:
@@ -123,6 +124,15 @@ def fetch_page(url: str, config: AppConfig) -> dict:
             return {**saved, "cache_state": "cached"}
     except (OSError, ValueError, KeyError, TypeError):
         pass
+    return None
+
+
+def fetch_page(url: str, config: AppConfig) -> dict:
+    now = datetime.now(UTC)
+    cache = config.database_path.with_suffix(".pages") / f"{digest([VERSION, url])}.json"
+    saved = cached_page(url, config)
+    if saved is not None:
+        return saved
     current = url
     for hop in range(4):
         target = public_target(current)

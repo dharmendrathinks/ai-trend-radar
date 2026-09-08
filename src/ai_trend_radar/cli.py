@@ -8,17 +8,19 @@ from dotenv import load_dotenv
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="ai-trend-radar", description="Find fresh AI/developer YouTube topic opportunities.")
+    parser = argparse.ArgumentParser(prog="ai-trend-radar", description="Find AI changes, affected developers, and practical workflow consequences.")
     parser.add_argument("--verbose", action="store_true", help="enable informational logging")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     scan = subparsers.add_parser("scan", help="collect, rank, and report current opportunities")
     scan.add_argument("--config", default="config.toml", help="TOML configuration path")
-    scan.add_argument("--top", type=int, help="maximum number of Top Opportunities")
-    scan.add_argument("--no-youtube", action="store_true", help="skip YouTube validation")
+    scan.add_argument("--top", type=int, help="maximum number of developer updates")
+    video = scan.add_mutually_exclusive_group()
+    video.add_argument("--no-youtube", action="store_true", help="skip the optional YouTube appendix")
+    video.add_argument("--youtube", action="store_true", help="enable the optional YouTube appendix")
     scan.add_argument("--slack", action="store_true", help="queue and send the changes brief to Slack")
     llm = scan.add_mutually_exclusive_group()
-    llm.add_argument("--llm", dest="llm", action="store_true", default=None, help="extract supplemental release updates with Codex (uses model allowance)")
+    llm.add_argument("--llm", dest="llm", action="store_true", default=None, help="assess developer impact from captured sources (uses model allowance)")
     llm.add_argument("--no-llm", dest="llm", action="store_false", help="disable model extraction for this scan")
 
     notify = subparsers.add_parser("notify", help="send the latest saved brief and retry pending Slack delivery")
@@ -29,14 +31,16 @@ def build_parser() -> argparse.ArgumentParser:
     brief = subparsers.add_parser("brief", help="show pending changes from the latest scan without fetching")
     brief.add_argument("--config", default="config.toml")
     brief.add_argument("--top", type=int, help="maximum new discoveries")
-    decide = subparsers.add_parser("decide", help="review, defer, or reopen one event")
+    decide = subparsers.add_parser("decide", help="review, defer, or reopen one development")
     decide.add_argument("event_id")
+    decide.add_argument("--event", action="store_true", help="explicit legacy event-level operation; otherwise supply a topic ID")
     decide.add_argument("action", choices=["reviewed", "deferred", "reopen"])
     decide.add_argument("--until", help="future ISO timestamp including timezone, for deferred")
     decide.add_argument("--note")
     decide.add_argument("--config", default="config.toml")
-    feedback = subparsers.add_parser("feedback", help="record usefulness and prior awareness for one event")
+    feedback = subparsers.add_parser("feedback", help="record usefulness and prior awareness for one development")
     feedback.add_argument("event_id")
+    feedback.add_argument("--event", action="store_true", help="record legacy event feedback; otherwise supply a topic ID")
     feedback.add_argument("verdict", choices=["investigate", "brief", "skip"])
     feedback.add_argument("--known", choices=["yes", "no", "unknown"], default="unknown", help="did you already know this development before Radar surfaced it?")
     feedback.add_argument("--note")
@@ -59,7 +63,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "scan":
         from ai_trend_radar.pipeline import run_scan
 
-        return run_scan(Path(args.config), top=args.top, no_youtube=args.no_youtube, slack=args.slack, llm=args.llm)
+        options = dict(top=args.top, no_youtube=args.no_youtube, slack=args.slack, llm=args.llm)
+        if args.youtube:
+            options['youtube_enabled'] = True
+        return run_scan(Path(args.config), **options)
     if args.command == "notify":
         import json
         import os
@@ -92,7 +99,10 @@ def main(argv: list[str] | None = None) -> int:
             config = load_config(Path(args.config))
             database = Database(config.database_path)
             database.initialize()
-            state = RadarState(database)
+            from ai_trend_radar.topic_state import TopicState
+            state = TopicState(database)
+            if args.command in {'decide', 'feedback'} and not args.event:
+                args.event_id = state.resolve_topic(args.event_id)
             now = datetime.now(UTC)
             if args.command == "brief":
                 top = args.top if args.top is not None else config.top_results
@@ -106,8 +116,9 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"{key}: {args.verdict}; already known: {args.known}. Review/defer state unchanged.")
             elif args.command == "feedback-summary":
                 import json
-                summary = feedback_summary(database)
-                print(json.dumps(summary, indent=2) if args.json else render_feedback_summary(summary))
+                summary = feedback_summary(database, 'topics')
+                summary['legacy_event_feedback'] = feedback_summary(database, 'legacy')
+                print(json.dumps(summary, indent=2) if args.json else render_feedback_summary(summary) + '\n\nLegacy event history (not copied into topic ratings):\n' + render_feedback_summary(summary['legacy_event_feedback']))
             else:
                 until = datetime.fromisoformat(args.until.replace("Z", "+00:00")) if args.until else None
                 if until is not None and until.tzinfo is None:

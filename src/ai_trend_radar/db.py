@@ -102,21 +102,48 @@ class Database:
             connection.close()
 
     def initialize(self) -> None:
+        # SQLite backup includes committed WAL content; never use a plain file copy.
+        if self.path.is_file():
+            with sqlite3.connect(self.path) as source:
+                old_version = source.execute("PRAGMA user_version").fetchone()[0]
+                if old_version < 3:
+                    backup = self.path.with_name(self.path.name + ".pre-v3.bak")
+                    if backup.exists():
+                        # An existing backup is preserved; migration itself is idempotent.
+                        pass
+                    else:
+                        with sqlite3.connect(backup) as target:
+                            source.backup(target)
         with self.connect() as connection:
             version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version > 2:
+            if version > 3:
                 raise RuntimeError(f"unsupported database schema {version}")
-            connection.executescript(SCHEMA)
+            connection.execute("BEGIN IMMEDIATE")
+            for statement in SCHEMA.split(';'):
+                if statement.strip():
+                    connection.execute(statement)
             if "confirmed_at" not in {r[1] for r in connection.execute("PRAGMA table_info(http_cache)")}:
                 connection.execute("ALTER TABLE http_cache ADD COLUMN confirmed_at TEXT")
             if "measurement_kind" not in {r[1] for r in connection.execute("PRAGMA table_info(observations)")}:
                 connection.execute("ALTER TABLE observations ADD COLUMN measurement_kind TEXT NOT NULL DEFAULT 'legacy'")
             from ai_trend_radar.state import STATE_SCHEMA
-            connection.executescript(STATE_SCHEMA)
+            for statement in STATE_SCHEMA.split(';'):
+                if statement.strip():
+                    connection.execute(statement)
             from ai_trend_radar.feedback import FEEDBACK_SCHEMA
             from ai_trend_radar.discovery import DISCOVERY_SCHEMA
-            connection.executescript(FEEDBACK_SCHEMA + DISCOVERY_SCHEMA)
-            connection.execute("PRAGMA user_version=2")
+            for statement in (FEEDBACK_SCHEMA + DISCOVERY_SCHEMA).split(';'):
+                if statement.strip():
+                    connection.execute(statement)
+            from ai_trend_radar.topic_state import TOPIC_SCHEMA, seed_baselines
+            # executescript commits implicitly: execute the additive topic migration
+            # statement-by-statement inside one explicit transaction instead.
+            for statement in TOPIC_SCHEMA.split(";"):
+                if statement.strip():
+                    connection.execute(statement)
+            if version < 3:
+                seed_baselines(connection)
+            connection.execute("PRAGMA user_version=3")
 
     def healthcheck(self) -> None:
         with self.connect() as connection:

@@ -13,23 +13,13 @@ import sys
 
 from ai_trend_radar.config import ConfigError, load_config
 from ai_trend_radar.db import Database
-from ai_trend_radar.enrichment import discover_updates
 from ai_trend_radar.http import CachedHttpClient
 from ai_trend_radar.models import ProviderResult
 from ai_trend_radar.providers import github, hackernews, huggingface, official, youtube
-from ai_trend_radar.ranking import (
-    SCORING_VERSION,
-    attach_repository_support,
-    eligible_items,
-    filter_eligible_candidates,
-    partition_community_watch,
-    partition_main_list_floor,
-    rank_candidates,
-)
-from ai_trend_radar.reports import build_report, write_reports, _candidate_dict, _atomic_write
+from ai_trend_radar.ranking import attach_repository_support, eligible_items, rank_candidates
+from ai_trend_radar.reports import write_reports, _atomic_write
 from ai_trend_radar.state import RadarState, render_brief
 from ai_trend_radar.resolution import cluster_items
-from ai_trend_radar.topics import attach_video_topics, partition_topicable_candidates
 from ai_trend_radar.utils import compact_error
 from ai_trend_radar.slack import SlackDelivery, validate_webhook
 
@@ -42,11 +32,13 @@ def _failed(name: str, now: datetime, exc: BaseException) -> ProviderResult:
     return ProviderResult(name, "failed", [], now, error=compact_error(exc))
 
 
-def run_scan(config_path: Path, *, top: int | None = None, no_youtube: bool = False, slack: bool = False, llm: bool | None = None) -> int:
+def run_scan(config_path: Path, *, top: int | None = None, no_youtube: bool = False, slack: bool = False, llm: bool | None = None, youtube_enabled: bool | None = None, config_override=None, source_snapshot=None, document_snapshot=None) -> int:
     started = datetime.now(UTC)
     scan_id = uuid4().hex[:10]
     try:
-        config = load_config(config_path)
+        config = config_override or load_config(config_path)
+        if youtube_enabled is not None:
+            config.youtube["enabled"] = youtube_enabled
         delivery = SlackDelivery(config.database_path, validate_webhook(os.getenv("SLACK_WEBHOOK_URL"))) if slack else None
         if top is not None and top <= 0:
             raise ConfigError("--top must be positive")
@@ -62,16 +54,19 @@ def run_scan(config_path: Path, *, top: int | None = None, no_youtube: bool = Fa
             "huggingface": lambda: huggingface.collect(config, started),
         }
         collected: dict[str, ProviderResult] = {}
-        with ThreadPoolExecutor(max_workers=min(config.max_workers, len(tasks))) as executor:
-            futures = {executor.submit(task): name for name, task in tasks.items()}
-            for future in as_completed(futures):
-                name = futures[future]
-                try:
-                    collected[name] = future.result()
-                except Exception as exc:
-                    collected[name] = _failed(name, started, exc)
-                result = collected[name]
-                LOGGER.info("%s: %s (%d items)", name, result.status, len(result.items))
+        if source_snapshot is not None:
+            collected = dict(source_snapshot)
+        else:
+            with ThreadPoolExecutor(max_workers=min(config.max_workers, len(tasks))) as executor:
+                futures = {executor.submit(task): name for name, task in tasks.items()}
+                for future in as_completed(futures):
+                    name = futures[future]
+                    try:
+                        collected[name] = future.result()
+                    except Exception as exc:
+                        collected[name] = _failed(name, started, exc)
+                    result = collected[name]
+                    LOGGER.info("%s: %s (%d items)", name, result.status, len(result.items))
 
         provider_results = [collected[name] for name in DISCOVERY_PROVIDERS]
         usable = [result for result in provider_results if result.status in {"ok", "partial", "cached", "stale"}]
@@ -93,101 +88,50 @@ def run_scan(config_path: Path, *, top: int | None = None, no_youtube: bool = Fa
         candidates = cluster_items(eligible, config)
         attach_repository_support(candidates, all_items)
         state.bind(candidates)
-        candidates = rank_candidates(filter_eligible_candidates(candidates, config), config, started)
-        all_candidates = list(candidates)
-        candidates, community_watch = partition_community_watch(candidates, config)
-        attach_video_topics(candidates, config.topics)
-        topicable, release_watch = partition_topicable_candidates(candidates, len(candidates))
-        promoted, floor_watch = partition_main_list_floor(topicable, config)
-        selected = promoted[:result_count]
-        main_ids = {c.fingerprint for c in promoted}
-        release_watch.extend(
-            candidate
-            for candidate in floor_watch
-            if candidate.video_topic
-            or any(item.authority == "official" or item.source_family == "official" for item in candidate.items)
-        )
-        community_watch.extend(
-            candidate
-            for candidate in floor_watch
-            if not candidate.video_topic
-            and not any(item.authority == "official" or item.source_family == "official" for item in candidate.items)
-        )
-        release_watch = sorted(
-            release_watch,
-            key=lambda candidate: (candidate.discovery_priority, candidate.effective_event_time, candidate.fingerprint),
-            reverse=True,
-        )[:result_count]
-        community_watch = sorted(
-            community_watch,
-            key=lambda candidate: (candidate.discovery_priority, candidate.effective_event_time, candidate.fingerprint),
-            reverse=True,
-        )[:result_count]
-        unavailable_discovery = [result.provider for result in provider_results if result.status in {"failed", "stale"}]
-        for candidate in [*selected, *release_watch, *community_watch]:
-            if unavailable_discovery:
-                candidate.missing.append(f"Discovery evidence unavailable or stale: {', '.join(unavailable_discovery)}")
-            if any(
-                item.metrics.get("observed_growth") and not item.metrics["observed_growth"].get("available")
-                for item in candidate.items
-            ):
-                candidate.missing.append("Observed growth unavailable on first observation; current aggregate shown")
+        candidates = rank_candidates(candidates, config, started)
+        from ai_trend_radar.developments import assess_candidates
+        from ai_trend_radar.developer_reports import build_developer_report
+        from ai_trend_radar.topic_state import TopicState
 
-        youtube_key = os.getenv("YOUTUBE_API_KEY")
-        youtube_client = CachedHttpClient(database, config.http, secrets=[youtube_key] if youtube_key else [])
-        youtube_result = youtube.validate(selected, config, youtube_client, started, disabled=no_youtube)
-        provider_results.append(youtube_result)
-
-        llm_updates = discover_updates(eligible, config, enabled=config.llm.enabled if llm is None else llm,
-            community_items=[item for candidate in selected for item in candidate.items if item.item_type == "hacker_news_story"])
-        LOGGER.info("LLM: %s (%d sources, %d new calls, %d cached)", llm_updates["status"],
-                    len(llm_updates["updates"]), llm_updates["new_calls"], llm_updates["cached_results"])
+        topics, coverage = assess_candidates(candidates, config, started,
+            enabled=config.llm.enabled if llm is None else llm, document_snapshot=document_snapshot)
+        if source_snapshot is not None:
+            coverage['warnings'].append('Captured-evidence replay; providers and source documents were not re-fetched.')
+        topic_state = TopicState(database)
+        topic_state.save_topics(topics, scan_id)
+        selected_topics = [t for t in topics if t["disposition"] == "main"][:result_count]
+        parent_ids = {p for t in selected_topics for p in t["parent_event_ids"]}
+        selected = [c for c in candidates if c.fingerprint in parent_ids]
+        youtube_appendix = []
+        youtube_requested = bool(config.youtube.get("enabled", False)) and not no_youtube
+        if youtube_requested:
+            youtube_key = os.getenv("YOUTUBE_API_KEY")
+            youtube_client = CachedHttpClient(database, config.http, secrets=[youtube_key] if youtube_key else [])
+            youtube_result = youtube.validate(selected, config, youtube_client, started, disabled=False)
+            provider_results.append(youtube_result)
+            youtube_appendix = [{"parent_event_id": c.fingerprint, "title": c.title, "evidence": c.youtube} for c in selected]
         completed = datetime.now(UTC)
-        discovery_partial = any(result.status in {"failed", "partial", "stale"} for result in provider_results[:-1])
-        youtube_requested = bool(config.youtube.get("enabled", True)) and not no_youtube
-        youtube_partial = youtube_requested and youtube_result.status not in {"ok", "cached"}
-        partial = discovery_partial or youtube_partial
+        partial = any(p.status in {"failed", "partial", "stale"} for p in provider_results) or coverage["status"] == "partial"
         status = "partial" if partial else "complete"
-        report = build_report(
-            scan_id=scan_id,
-            started_at=started,
-            completed_at=completed,
-            status=status,
-            config=config,
-            provider_results=provider_results,
-            candidates=selected,
-            release_watch=release_watch,
-            community_watch=community_watch,
-            llm_updates=llm_updates,
-        )
+        report = build_developer_report(scan_id=scan_id, started=started, completed=completed,
+            status=status, config=config, providers=provider_results, topics=topics, coverage=coverage,
+            top=result_count, youtube_appendix=youtube_appendix)
         markdown_path, json_path = write_reports(report, config.reports_path)
-        database.record_scan(
-            scan_id=scan_id,
-            started_at=started,
-            completed_at=completed,
-            status=status,
-            config_fingerprint=config.fingerprint,
-            scoring_version=SCORING_VERSION,
-            provider_statuses=[result.status_dict() for result in provider_results],
-            report=report,
-        )
-        state.save_candidates([
-            (_candidate_dict(c, started, []), 'main' if c.fingerprint in main_ids else 'watch')
-            for c in all_candidates
-        ], scan_id)
-        brief = state.brief(completed, result_count, scan_id)
-        brief['provider_status'] = report['provider_status']
-        brief['status'] = status
-        _atomic_write(config.reports_path / 'latest.brief.md', render_brief(brief))
-        _atomic_write(config.reports_path / 'latest.brief.json', json.dumps(brief, indent=2, ensure_ascii=False) + '\n')
+        database.record_scan(scan_id=scan_id, started_at=started, completed_at=completed, status=status,
+            config_fingerprint=config.fingerprint, scoring_version=report["scoring_version"],
+            provider_statuses=[p.status_dict() for p in provider_results], report=report)
+        brief = topic_state.brief(completed, result_count, scan_id)
+        brief["provider_status"] = report["provider_status"]
+        brief["assessment_status"] = coverage["status"]
+        brief["status"] = status
+        _atomic_write(config.reports_path / "latest.brief.md", render_brief(brief))
+        _atomic_write(config.reports_path / "latest.brief.json", json.dumps(brief, indent=2, ensure_ascii=False) + "\n")
         if delivery:
             delivery.enqueue(brief)
-        state.acknowledge(brief)
+        topic_state.acknowledge(brief)
         print(f"Changes: {config.reports_path / 'latest.brief.md'}")
-        print(
-            f"Scan {scan_id}: {status}; {len(selected)} recommendations; "
-            f"{len(release_watch)} release watch; {len(community_watch)} community watch"
-        )
+        print(f"Scan {scan_id}: {status}; {len(selected_topics)} developer updates; {len(report['watch'])} watch")
+        print(f"Assessment: {coverage['new_calls']} new calls; {coverage['cached_results']} cached; {coverage['skipped']} skipped")
         print(f"Markdown: {markdown_path}")
         print(f"JSON: {json_path}")
         if delivery:

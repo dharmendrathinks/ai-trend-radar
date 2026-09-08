@@ -1,5 +1,8 @@
 # AI Trend Radar — Smallest Robust End-to-End V1
 
+> Historical V1 plan. See [the active developer-first plan](developer-first-plan.md)
+> and [the strategic review/status audit](plan_v2.md) for subsequent decisions.
+
 ## Summary
 
 `ai-trend-radar` will be a small Python CLI that discovers fresh AI/developer events from live sources, ranks them with transparent deterministic heuristics, and attaches precise YouTube search evidence so a creator can decide what to investigate.

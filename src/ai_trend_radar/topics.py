@@ -8,7 +8,7 @@ from ai_trend_radar.models import Candidate, SourceItem, isoformat
 from ai_trend_radar.utils import clean_text
 
 
-EXTRACTION_VERSION = "release-topic-v1.2"
+EXTRACTION_VERSION = "release-topic-v1.3"
 TOPICABILITY_VERSION = "topicability-v1.0"
 WORD_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9+._/-]*")
 REPOSITORY_RE = re.compile(r"\b[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\b")
@@ -290,6 +290,9 @@ def _meaningful_change(
     section = str(bullet.get("section") or "").lower()
     text = str(bullet["text"]).lower()
     high_impact = any(term in text or term in section for term in high_impact_terms)
+    consequence = bool(re.search(r"\b(?:incorrect|false|falsely|wrong|crash|hang|corrupt|data loss|fails? to|failure|permission|unauthoriz|timeout|unresponsive|incomplete|not (?:finish|complet|execut))", text))
+    if consequence and any(term in text for term in developer_terms):
+        return 1, "developer-facing correctness, reliability, or access consequence"
     noisy_section = any(term in section for term in noise_sections)
     noisy_text = any(term in text for term in noise_terms)
     maintenance_verb = bool(re.match(r"^(?:fixed|fixes|resolved|bumped|updated)\b", text))

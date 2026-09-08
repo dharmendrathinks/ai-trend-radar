@@ -38,3 +38,4 @@ jobs:
           wheels=(dist/*.whl)
           uv run --isolated --no-project --with "${wheels[0]}" python -c 'from ai_trend_radar.llm_adapter import HERE, validate_model; from ai_trend_radar.page_evidence import PageText; assert all((HERE / name).is_file() for name in ("prompt.md", "editorial.md", "community.md")); assert validate_model({"angles": [], "abstain_reason": "Smoke check"}, {"notes": ""}) == ([], []); assert validate_model({"angles": [], "abstain_reason": "Smoke check"}, {"notes": ""}, scored=True) == ([], [])'
           uv run --isolated --no-project --with "${wheels[0]}" ai-trend-radar scan --help
+          uv run --isolated --no-project --with "${wheels[0]}" python -c 'from ai_trend_radar.llm_adapter import HERE, validate_developments; assert (HERE / "developer.md").is_file(); assert validate_developments({"developments": [], "abstain_reason": "Smoke check"}, {"blocks": []}) == ([], [])'

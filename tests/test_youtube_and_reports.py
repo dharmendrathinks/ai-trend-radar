@@ -262,6 +262,7 @@ def test_missing_key_degrades_to_manual_links(config: AppConfig, monkeypatch) ->
 
 @respx.mock
 def test_youtube_search_and_hydration(config: AppConfig, monkeypatch) -> None:
+    config.youtube['enabled'] = True
     monkeypatch.setenv("YOUTUBE_API_KEY", "test-key")
     database = Database(config.database_path)
     database.initialize()
@@ -312,6 +313,7 @@ def test_youtube_search_and_hydration(config: AppConfig, monkeypatch) -> None:
 
 @respx.mock
 def test_opt_in_annotations_are_separate_and_do_not_filter_or_reorder(config: AppConfig, monkeypatch) -> None:
+    config.youtube['enabled'] = True
     monkeypatch.setenv("YOUTUBE_API_KEY", "test-key")
     config.youtube["enable_local_relevance_annotations"] = True
     database = Database(config.database_path)

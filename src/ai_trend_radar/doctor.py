@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 from pathlib import Path
 import os
+import sqlite3
 
 from huggingface_hub import HfApi
 
@@ -23,7 +24,7 @@ def run_doctor(config_path: Path) -> int:
         database.initialize()
         database.healthcheck()
         checks.append(("sqlite", "ok", str(config.database_path)))
-    except (ConfigError, OSError, ValueError) as exc:
+    except (ConfigError, OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
         print(f"FAIL configuration/storage: {compact_error(exc)}")
         return 1
 
@@ -61,7 +62,9 @@ def run_doctor(config_path: Path) -> int:
         checks.append(("Hugging Face", "fail", compact_error(exc, [hf_token] if hf_token else [])))
 
     youtube_key = os.getenv("YOUTUBE_API_KEY")
-    if not youtube_key:
+    if not config.youtube.get('enabled', False):
+        checks.append(("YouTube", "ok", "optional appendix disabled; no API probe"))
+    elif not youtube_key:
         checks.append(("YouTube", "warn", "YOUTUBE_API_KEY not set; scans will show manual links only"))
     else:
         try:
@@ -80,4 +83,3 @@ def run_doctor(config_path: Path) -> int:
     for name, status, detail in checks:
         print(f"{status.upper():4} {name:<{width}}  {detail}")
     return 1 if failed else 0
-

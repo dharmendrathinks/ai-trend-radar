@@ -6,6 +6,9 @@ from typing import Any
 import hashlib
 import json
 import tomllib
+import warnings
+
+DEVELOPER_AUDIENCE = "Developers using AI in their daily work and developers building AI-powered software."
 
 
 class ConfigError(ValueError):
@@ -26,7 +29,7 @@ class HttpConfig:
     stale_if_error_hours: int = 48
     max_retries: int = 2
     retry_backoff_seconds: float = 0.5
-    user_agent: str = "ai-trend-radar/0.2"
+    user_agent: str = "ai-trend-radar/0.3.0"
 
 
 @dataclass(slots=True)
@@ -93,6 +96,8 @@ class LlmConfig:
     max_hn_stories: int = 5
     timeout_seconds: int = 120
     max_input_chars: int = 20000
+    max_candidates: int = 40
+    max_page_fetches: int = 12
 
 
 @dataclass(slots=True)
@@ -117,6 +122,7 @@ class AppConfig:
     categories: dict[str, list[str]]
     raw: dict[str, Any]
     llm: LlmConfig = field(default_factory=LlmConfig)
+    developer_audience: str = DEVELOPER_AUDIENCE
 
     @property
     def fingerprint(self) -> str:
@@ -167,8 +173,9 @@ def load_config(path: str | Path) -> AppConfig:
     if llm.reasoning_effort not in {"minimal", "low", "medium", "high", "xhigh"}:
         raise ConfigError("llm.reasoning_effort must be minimal, low, medium, high, or xhigh")
     for key, maximum in (("max_calls_per_scan", 100), ("max_releases", 100), ("max_hn_stories", 20),
+                         ("max_candidates", 200), ("max_page_fetches", 100),
                          ("timeout_seconds", 600), ("max_input_chars", 100000)):
-        value = _positive(llm_raw.get(key, getattr(llm, key)), f"llm.{key}", allow_zero=key == "max_hn_stories")
+        value = _positive(llm_raw.get(key, getattr(llm, key)), f"llm.{key}", allow_zero=key in {"max_hn_stories", "max_page_fetches"})
         if value > maximum:
             raise ConfigError(f"llm.{key} must be <= {maximum}")
         setattr(llm, key, value)
@@ -190,6 +197,15 @@ def load_config(path: str | Path) -> AppConfig:
     hn = _require_table(data, "hacker_news")
     hf = _require_table(data, "huggingface")
     youtube = _require_table(data, "youtube")
+    if not isinstance(youtube.get("enabled", False), bool):
+        raise ConfigError("youtube.enabled must be a boolean")
+    youtube.setdefault("enabled", False)
+    developer = _require_table(data, "developer")
+    audience = developer.get("audience", llm_raw.get("audience", DEVELOPER_AUDIENCE))
+    if not isinstance(audience, str) or not audience.strip() or len(audience) > 2000:
+        raise ConfigError("developer.audience must be a nonempty string of at most 2000 characters")
+    if "audience" in llm_raw and "audience" not in developer:
+        warnings.warn("llm.audience is deprecated; move your audience to [developer] audience", FutureWarning, stacklevel=2)
     topics = _require_table(data, "topics")
     ranking_raw = _require_table(data, "ranking")
     interest_raw = ranking_raw.get("interest", {})
@@ -261,6 +277,7 @@ def load_config(path: str | Path) -> AppConfig:
             raise ConfigError(f"all [{section_name}] values must be arrays")
 
     return AppConfig(
+        developer_audience=audience,
         source_path=source_path,
         database_path=database_path,
         reports_path=reports_path,

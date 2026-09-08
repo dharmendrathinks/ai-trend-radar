@@ -2,178 +2,127 @@
 
 [![CI](https://github.com/dharmendrathinks/ai-trend-radar/actions/workflows/ci.yml/badge.svg)](https://github.com/dharmendrathinks/ai-trend-radar/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
 
-A local CLI for discovering promising AI and developer video topics from upstream releases and developer activity.
+A local CLI for understanding AI changes that affect developers.
 
-`ai-trend-radar` watches upstream ecosystem events, ranks the ones worth investigating, and attaches recent YouTube evidence for manual coverage review. It is built for technical creators and researchers deciding what to investigate or cover next, including projects outside their watchlists. Ranking is deterministic and works without an LLM. Optional model extraction adds a separate, first-in-report **LLM-discovered updates** section. The radar does **not** claim to predict virality or demonstrate a measured early-detection advantage.
+> What changed, which developers should care, and what difference could it make to their work?
 
-[Quick start](#quick-start) · [Slack setup](#optional-slack-delivery) · [Scheduling](#scheduled-runs) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting) · [Contributing](CONTRIBUTING.md)
+Radar watches official feeds, GitHub, Hacker News and Hugging Face. It surfaces
+capabilities, consequential fixes, breaking changes, pricing/access updates and
+practical findings for developers using AI or building AI-powered software.
+YouTube is an optional appendix, not the purpose or ranking criterion.
 
-**Status:** alpha. [v0.2.0](https://github.com/dharmendrathinks/ai-trend-radar/releases/tag/v0.2.0) adds scored LLM-discovered topics from GitHub releases and selected Hacker News pages, alongside Slack delivery and the standalone extraction evaluation harness. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for scope and migration details. [plan_v2.md](plan_v2.md) is a strategic review and roadmap, not a list of shipped capabilities.
+**Status: alpha, developer-first release
+[v0.3.0](https://github.com/dharmendrathinks/ai-trend-radar/releases/tag/v0.3.0).**
+This release replaces v0.2.0's separate LLM report and video-oriented rubric.
+Report/brief JSON and database schemas advance to version 3; read the
+[upgrade notes](RELEASE_NOTES.md#upgrading-from-v020) before adopting it.
 
-Previously named **YouTube Trend Radar**. Current source installs the `ai-trend-radar` command and `ai_trend_radar` Python package; the old command and import names are no longer provided. For an existing checkout, update `origin` to `git@github.com:dharmendrathinks/ai-trend-radar.git`, then run `uv sync --locked --extra dev` and update scheduled commands. You can keep your checkout's existing folder name and reuse its configuration, databases, and reports. Published v0.1.0 artifacts retain the original names.
+[Quick start](#quick-start) · [Scoring](#developer-priority) ·
+[Configuration](#configuration) · [Slack](#optional-slack-delivery) ·
+[Plans and status](docs/README.md) · [Release notes](RELEASE_NOTES.md)
 
-```text
-Official releases/changelogs + GitHub watchlist/exploration
-                         + Hacker News + Hugging Face
-                                      ↓
-       normalization + freshness + evidence + observed interest
-                                      ↓
-                             Top Opportunities
-                                      ↓
-                  YouTube evidence for manual inspection
-```
-
-YouTube evidence never affects Discovery Priority. The radar does not calculate a default YouTube crowding or opportunity score.
-
-## Output preview
-
-Illustrative summary with fictional projects and scores, not a live scan or an exact rendering:
-
-```text
-LLM-discovered updates (when enabled)
-
-Example Local Runtime: image and audio input
-   Source quote, release link, developer value, and caveats
-
-Top Opportunities — 2 found
-
-1. Example Coding Agent: background task execution
-   Priority: 89.2 · Interest: strong
-
-2. Example Local Runtime: tool-calling support
-   Priority: 68.5 · Interest: strong
-
-Release Watch: 5
-Community Watch: 2
-```
-
-[See how scoring works ↓](#discovery-priority)
-
-## Why this exists
-
-Most trend tools become useful after attention has already accumulated. For a creator covering coding agents, AI IDEs, MCP, local AI, developer models, SDKs, and open-source tools, that can be too late.
-
-This project starts farther upstream. A new official release can matter before it trends; early GitHub, Hacker News, or Hugging Face activity can strengthen the case; YouTube then helps the operator inspect whether the exact viewer intent is already being served.
+The repository/package/command remain `ai-trend-radar` / `ai_trend_radar`.
+Existing checkout folder names, including `youtube-trend-radar`, need not change.
 
 ## Quick start
 
-Requirements: Git, Python 3.12 or newer, [`uv`](https://docs.astral.sh/uv/), and internet access for live collection. Discovery can run without API credentials; a GitHub token is recommended for higher request limits.
+Requirements: Python 3.12+, Git, uv and internet access for collection.
+The automated tests require no API credentials.
 
 ```bash
 git clone https://github.com/dharmendrathinks/ai-trend-radar.git
 cd ai-trend-radar
-
 cp config.example.toml config.toml
 cp .env.example .env
+uv sync --locked --extra dev
 
-uv sync --locked
+# Source-grounded discovery, without model calls or YouTube requests.
+uv run ai-trend-radar scan --no-llm --no-youtube
+
+# Richer assessments using your local Codex login/model allowance.
+uv run ai-trend-radar scan --llm --no-youtube
 ```
 
-These copy commands are for a fresh checkout. Preserve an existing `.env` and `config.toml` when updating. Add any optional [credentials](#credentials) to `.env`, then run:
+Copy examples only for a fresh installation. Preserve existing credentials,
+watchlists and configuration. LLM use stays opt-in; missing model access produces
+a usable report with unassessed entries, not fabricated scores. Collection or
+assessment gaps can make a usable scan partial.
 
-```bash
-# Check connectivity and configuration; missing optional keys can produce warnings.
-uv run ai-trend-radar doctor
+Open `reports/latest.md` for the full numbered report or
+`reports/latest.brief.md` for new/changed/due developments. JSON companions and
+uniquely named scan reports are also saved. Runtime state stays out of Git at
+the default paths.
 
-# First scan: upstream discovery plus manual YouTube search links.
-uv run ai-trend-radar scan --no-youtube
-```
+## Developer Priority
 
-To fetch YouTube video metadata, set `YOUTUBE_API_KEY` and run `scan` without `--no-youtube`. A usable scan can still be marked `partial` if a provider is unavailable; inspect the report's provider status. Fewer than ten recommendations, or none, is a valid result.
+Each assessed development has its own /100 scores and reasons:
 
-Useful variants:
+| Category | Weight | Question |
+|---|---:|---|
+| Developer impact | 50% | How substantially does this affect the relevant workflow? |
+| Developer relevance | 30% | How directly does this matter to AI-using/building developers? |
+| Urgency | 20% | How promptly should affected developers investigate or respond? |
 
-```bash
-# Run discovery without YouTube API requests.
-uv run ai-trend-radar scan --no-youtube
+Overall is calculated in code to one decimal. The versioned rubric is
+**developer-priority-v1**, with 0/25/50/75/100 anchors. These are editorial judgments,
+not measured productivity, adoption, demand or video-success predictions.
 
-# Request at most five Top Opportunities. The floor may return fewer.
-uv run ai-trend-radar scan --top 5
+Urgency describes circumstances at assessment time—not post age or a live deadline
+countdown. Age and evidence type are separate. A recent HN post does not prove a
+new launch; a modified model card does not prove a new capability.
 
-# Add model-extracted release updates at the top of the full report.
-uv run ai-trend-radar scan --llm
+Main-list floors: overall 50, impact 25 and relevance 50. Lower-scoring developments
+go to Watch. Scored entries sort by overall, impact, relevance, urgency, event time
+and stable topic ID. Unassessed discoveries follow with **N/A** in deterministic
+Discovery Priority order. N/A means unknown, not low usefulness.
 
-# Override local LLM configuration for one deterministic-only scan.
-uv run ai-trend-radar scan --no-llm
+`--top N` limits the combined main list, not assessment. Fewer results are valid.
+Multiple changes in one release receive separate entries and source links; the
+generic event entry is replaced once its developments are extracted.
 
-# Use a configuration outside the repository root.
-uv run ai-trend-radar scan --config path/to/config.toml
-```
+### Deterministic Discovery Priority
 
-Successful scans write these files by default:
+The existing **v1.1** baseline remains a collection/fallback ordering aid:
+60% freshness, 25% evidence strength and 15% observed interest. These configurable
+weights are not the developer-impact rubric. Stars, discussions and source coverage
+are attention/provenance signals, not verified usefulness.
 
-| File | Use |
-|---|---|
-| `reports/latest.brief.md` / `.json` | New discoveries, material updates, and due reminders from the latest scan |
-| `reports/latest.md` / `.json` | Full latest report: LLM-discovered updates first, then provider status, Top Opportunities, and watch lists |
-| `reports/scan-*.md` / `.json` | Uniquely named full reports from individual scans |
-| `data/radar.sqlite3` | Observations, cache, event history, growth checkpoints, and review decisions |
-| `data/radar.slack.sqlite3` | Slack delivery outbox and receipts, created only when Slack is used |
+Meaningful fixes remain eligible under maintenance headings. Assessment happens
+before presentation cutoffs, without requiring HN popularity or a short freshness
+floor. Relevance filtering and the configured lookback still bound discovery.
 
-Open `reports/latest.brief.md` after the first scan. Runtime output, `.env`, and `config.toml` are ignored by Git at their default locations. Custom output paths outside those ignored locations need their own exclusions.
+## Commands and individual-topic review
 
-### Command reference
-
-Prefix each command with `uv run ai-trend-radar`:
+Prefix commands with `uv run ai-trend-radar`:
 
 | Command | Behavior |
 |---|---|
-| `scan [--top N] [--no-youtube] [--slack]` | Fetch evidence, rank topics, save reports, and optionally send a Slack brief |
-| `brief [--top N]` | Print pending cards from stored scan state and mark those cards presented; no source fetch |
-| `decide EVENT_ID reviewed` | Mark one event reviewed |
-| `decide EVENT_ID deferred --until TIMESTAMP` | Suppress one event until a future timestamp with a timezone |
-| `decide EVENT_ID reopen` | Bring an event back into the pending brief when eligible |
-| `feedback EVENT_ID investigate\|brief\|skip --known yes\|no\|unknown` | Record usefulness and whether the development was already known; leaves review/defer state unchanged |
-| `feedback-summary [--json]` | Show local feedback counts, unrated presentations, and source/discovery-origin breakdowns in JSON |
-| `notify` | Send the latest saved brief and retry queued Slack messages; no source fetch |
-| `doctor` | Check configuration, initialize/check storage, and probe source connectivity |
+| `scan [--top N] [--llm\|--no-llm] [--youtube\|--no-youtube] [--slack]` | Collect, assess, rank and save; Slack only with explicit opt-in |
+| `brief [--top N]` | Print pending new/updated/due topics offline, recording presentation |
+| `decide TOPIC_ID reviewed` | Review this development, not its siblings |
+| `decide TOPIC_ID deferred --until TIMESTAMP` | Defer one topic until a future timezone-aware timestamp |
+| `decide TOPIC_ID reopen` | Reopen a topic |
+| `feedback TOPIC_ID investigate\|brief\|skip --known yes\|no\|unknown` | Record usefulness and prior awareness without changing review state |
+| `feedback-summary [--json]` | Topic feedback plus separately identified legacy event history |
+| `notify` | Send saved Slack brief/retry outbox; no source fetch |
+| `doctor` | Check configuration, storage and provider connectivity |
 
-All commands accept `--config PATH`. Decisions also accept `--note TEXT`. Put the global `--verbose` flag before the command, for example `uv run ai-trend-radar --verbose scan --no-youtube`. Use `--help` on any command for its options.
+All commands accept `--config PATH`. Decisions/feedback accept notes. Feedback
+accepts `--revision N` to reject ratings for superseded evidence. Use `--event`
+explicitly for legacy event-level decisions or feedback.
 
+Topic identity follows source anchors, not generated titles or scores.
+Ambiguous relationships remain separate rather than silently sharing review state.
+Model rewording or scores alone do not create a discovery. Material source changes
+may revise a topic or create a related topic when its anchor cannot be matched.
 
-### Changes-only brief and review decisions
+The brief uses the same topics/order as the full report, with separate new,
+updated and due allowances. Overflow stays pending; presentation is not review.
+Deferred topics stay quiet until due. Feedback does not train weights or
+automatically change eligibility.
 
-Scans also write `reports/latest.brief.md` and `reports/latest.brief.json` alongside the full reports. The brief shows new qualifying discoveries, material updates, and deferred items that are due. Updates and reminders have separate limits, so they do not consume the new-discovery allowance. Exploration continues across the same sources, including projects outside your watchlist.
-
-Use the event ID printed in the report (or an unambiguous prefix of at least four characters):
-
-```bash
-# Mark this occurrence reviewed; this does not suppress future releases.
-uv run ai-trend-radar decide EVENT_ID reviewed
-
-# Keep it quiet until a specific time, including timezone.
-uv run ai-trend-radar decide EVENT_ID deferred --until 2026-10-01T09:00:00+05:30
-
-# Explicitly bring an item back.
-uv run ai-trend-radar decide EVENT_ID reopen
-
-# Show remaining pending discoveries and due reminders without fetching.
-uv run ai-trend-radar brief --top 5
-```
-
-Replace `EVENT_ID` with an ID from your report and choose a future deferral deadline; the timestamp above is an example. `brief` prints pending cards and records their presentation. To reread the brief already presented by a scan, open `latest.brief.md`. Rendering a card is not a reviewed decision. Overflow stays pending rather than being marked presented, and failed output can be retried. This local presentation state is separate from Slack delivery receipts.
-
-### Research feedback
-
-Tell Radar whether a development deserves investigation, a brief mention, or a skip. Record prior awareness separately: something can be useful even if you already knew about it.
-
-```bash
-uv run ai-trend-radar feedback EVENT_ID investigate --known no
-uv run ai-trend-radar feedback EVENT_ID brief --known yes --note "Useful update, already read the announcement"
-uv run ai-trend-radar feedback EVENT_ID skip --known unknown --note "Routine maintenance"
-uv run ai-trend-radar feedback-summary
-uv run ai-trend-radar feedback-summary --json
-```
-
-These commands work offline and accept `--config`. Missing `--known` stays `unknown`; Radar never assumes a topic was new to you. Feedback applies to the event's current revision. Commands embedded in the local brief include `--revision` to reject ratings after the evidence changes. Repeating feedback corrects the latest judgment while retaining its history. Feedback neither changes ranking nor marks an item reviewed; use `decide` for inbox state.
-
-The summary counts investigate/brief/skip, useful previously unknown events, and rated versus unrated brief presentations. It distinguishes unique events from revisions, so updates do not become extra new discoveries. JSON also groups judgments by source family and discovery origin, including `established_repository_search`. These overlapping, self-selected counts are not precision, recall, or proof that a source caused a discovery. Presentation tracking starts with database schema 2 and records brief output, not confirmed reading or Slack delivery. Legacy presentation history is not fabricated.
-
-Reviewed items can reappear when source text changes (whitespace-only changes are ignored), event interest moves into a stronger band, or a watch item qualifies for the main list. These are deterministic triggers, not semantic novelty judgments. Deferred items stay quiet until their deadline even if evidence changes. An overdue item absent from the latest scan is labeled as not rechecked. The full discovery report continues to show current opportunities regardless of review state.
-
-### Optional Slack delivery
+## Optional Slack delivery
 
 Slack delivery is optional and requires no hosted Radar service. Each user connects their own Slack workspace:
 
@@ -201,7 +150,7 @@ Delivery state lives in a separate SQLite file next to the configured database (
 
 Only a hash of the webhook is stored in the outbox. Pending messages contain the compact brief; successful delivery clears the payload field and retains a receipt. Changing the webhook creates a separate destination: pending messages for the old URL are not automatically forwarded to the new channel. Up to ten queued briefs are sent per invocation, oldest first. `notify` sends the saved scan brief; it does not create a new brief from subsequent review decisions.
 
-### Scheduled runs
+## Scheduled runs
 
 The CLI runs once and exits. Installing the project does not create a schedule. Use your own scheduler, such as a macOS LaunchAgent, Linux cron/systemd timer, or Windows Task Scheduler.
 
@@ -219,81 +168,50 @@ Omit `--slack` for local reports only; add `--no-youtube` to skip video metadata
 
 Reuse the same database across runs and avoid overlapping scans against it. Fresh temporary runners lose observed-growth baselines, review decisions, and Slack receipts unless you persist the state. The included [GitHub Actions workflow](.github/workflows/ci.yml) runs tests and builds; it does not collect daily reports.
 
-### Event and input guarantees
+## Existing databases and migration
 
-- Distinct releases have distinct event IDs; adding exact supporting evidence preserves the stored ID. Native GitHub release IDs distinguish recreated releases, and conflicting releases cannot be combined through a third item.
-- Repository star-growth events use successive persisted checkpoints and fixed observation intervals. Unchanged counters do not create a new occurrence or reset freshness. A long observation interval is reported as such, not described as acceleration.
-- Repository-wide activity and discussions linking to a project homepage are project context, not interest in a specific release.
-- Cross-source coverage is a ranking heuristic, not independent verification of a capability.
-- Undated items age from their stored first-seen time. JSON distinguishes acquisition, validation, cache state, and event-time basis. Cache/stale reads do not create metric observations; a 304 records an explicit revalidation while preserving body acquisition time.
-- GitHub release Markdown is captured separately from the 2,000-character display summary. The deterministic extractor reads the captured notes, so features near the end can be found. Official feeds retain supplied full-content fields or mark summary-only content. Documents are capped at 1,000,000 characters and incompleteness is disclosed. Collection limits still apply; no linked-page crawler or broad pagination was added.
+The first source-checkout command that initializes storage upgrades to SQLite
+schema **3**. Before upgrading an existing database, Radar creates a SQLite backup
+beside it named `<database>.pre-v3.bak`; committed WAL contents are included.
+Keep the backup private. Do not overlap scans or migration against the same state.
 
-Full source text is local data in SQLite and JSON reports, just like the existing source summaries. It is not included in Git. This change does not establish unrestricted redistribution rights for third-party content or an exact historical replay guarantee.
+Observations, legacy events, decisions, feedback and outbox history are preserved.
+The initial extracted topics inherit a current legacy reviewed/deferred state,
+explicitly labeled inherited. Legacy usefulness ratings are not copied into
+individual-topic judgments. Later new developments are independently reviewable.
 
-### Existing databases
+New full/brief JSON uses schema **3.0**. Entries contain `topic_id`, parent event
+links, evidence, assessment status, `developer_priority`, revision and review state.
+Old `llm_updates` and creator-specific fields are not emitted by new scans.
+Historical reports stay unchanged. Legacy rendering and extraction-only experiment
+support remain available.
 
-The application applies an additive, idempotent SQLite migration on the next run. Existing source items, scans, and metric history are retained. Old metric observations lack cache provenance, so they are labeled `legacy` and excluded from new measured-growth baselines. New growth checkpoints begin with a verified response; do not interpret that initial warm-up as a lack of project activity.
+Older binaries cannot use schema 3. To roll back, stop overlapping processes and
+restore the backup to a separate configuration/database path; new topic decisions
+made after migration are not present in that backup.
 
-Old reports keep their original identities. New reports use schema `2.3` (`llm_updates` with grouped updates, ranked topics, coverage, source/time provenance, and editorial ranking metadata), corrected Discovery Priority scoring `v1.1`, and deterministic extraction `release-topic-v1.2`. The local database remains schema 2. `event_id` is the durable review key; `fingerprint` remains an alias for compatibility. Review state starts with the new event ledger. Unsupported future database versions are rejected.
+## Configuration
 
-### Updating and keeping state
+See [config.example.toml](config.example.toml). Preserve your `.env` and local config.
 
-For an existing `main` checkout with your work committed or otherwise preserved:
-
-```bash
-git pull --ff-only
-uv sync --locked
-```
-
-Compare new settings in `config.example.toml` and `.env.example` with your local files; do not overwrite your credentials or watchlist. The repository workflow uses the committed dependency lockfile ([uv's locking behavior](https://docs.astral.sh/uv/concepts/projects/sync/)).
-
-Pause scheduled runs before backup or upgrade. Back up your configured database directory while no Radar process is using it, including SQLite sidecar files and the Slack outbox if present; keep a private copy of your configuration separately. Deleting the radar database resets observed history and decisions. Deleting Slack receipts can cause a previously sent brief to be sent again. There is no historical backfill or downgrade migration command.
-
-The discovery/feedback update adds three SQLite tables and upgrades the database to schema **2**, preserving existing events, observations, and decisions. Older code that supports only schema 1 refuses the upgraded database. Restore a pre-upgrade backup if reverting to that code. New GitHub collection settings are opt-in for existing configurations; copy the desired `established_*` keys from the example. Feedback needs no additional configuration.
-
-Download the wheel, source distribution, and checksums from the [v0.2.0 release](https://github.com/dharmendrathinks/ai-trend-radar/releases/tag/v0.2.0). The wheel installs the CLI and packaged LLM prompts/schemas; example configuration comes from the repository or source distribution. This release is distributed through GitHub, not PyPI. Historical v0.1.0 artifacts retain the original project name.
-
-
-## What it watches
-
-| Source | Responsibility | Credential |
-|---|---|---|
-| Official RSS/Atom feeds | Product releases, changelogs, and authoritative announcements | None |
-| GitHub watched repositories | Releases plus repeated aggregate repository observations | `GITHUB_TOKEN` optional, recommended |
-| GitHub exploration | New repositories plus optional discovery and measured follow-up of older active projects | `GITHUB_TOKEN` optional, recommended |
-| Hacker News | Relevant submissions, points, comments, and observed change | None |
-| Hugging Face | Emerging models and Spaces with supported public metadata | `HF_TOKEN` optional |
-| YouTube | Recent video metadata and direct searches for manual coverage inspection | `YOUTUBE_API_KEY` optional |
-
-Providers are isolated: one unavailable provider does not terminate an otherwise usable scan. Reports identify failures, stale/cache state, and missing evidence.
-
-## Output model
-
-- **Top Opportunities** — actionable topics worth investigating now. The configured count is a maximum; the radar returns fewer results rather than backfilling weak candidates.
-- **Release Watch** — release or authoritative changelog events that lack a sufficiently useful/current video angle or do not meet the main-list presentation floor.
-- **Community Watch** — relevant discoveries retained outside the primary list because of weak or stagnant evidence, English-orientation gates, freshness, or insufficient promotion evidence.
-
-Each recommendation includes timestamps, score inputs, triggering rules, observed signals, missing evidence, source links, and YouTube evidence when available. Markdown is designed for reading; JSON is suitable for downstream tooling.
-
-Release cards can include a primary video angle, alternatives, and supporting release-note text extracted by deterministic rules. Low-specificity releases stay in Release Watch. These are research suggestions for human review, not model-generated scripts.
-
-## Discovery Priority
-
-Freshness uses the best credible event timestamp and a configurable 48-hour half-life:
-
-```text
-Freshness = 100 × 2 ^ (-age_hours / 48)
-```
-
-Evidence Strength reflects observable provenance: an authoritative source, cross-source coverage, or a single community source. Interest is a configured `strong`, `moderate`, or `early/limited` band backed by current HN, GitHub, Hugging Face, and source-family measurements.
-
-```text
-Discovery Priority = 0.60 × Freshness
-                   + 0.25 × Evidence Strength
-                   + 0.15 × Interest Value
-```
-
-Discovery Priority orders discovery evidence; it is not a probability, virality forecast, or YouTube opportunity score. A separate presentation floor requires sufficient freshness plus moderate/strong interest, cross-source coverage, or authoritative actionable evidence before a candidate enters Top Opportunities. All thresholds live in `config.toml` and are starting heuristics, not scientifically calibrated predictions.
+- `[developer] audience`: up to 2,000 characters describing developers served.
+  Defaults to developers using AI and building AI-powered software. Legacy
+  `llm.audience` is a deprecated fallback; the new setting takes precedence.
+- `[llm] enabled`: false by default; CLI overrides apply to one scan.
+- Model, effort and executable remain configurable. The adapter uses local Codex
+  authentication, not a newly required API key. Use an absolute executable path
+  for schedulers with a minimal PATH.
+- Default bounds: 40 candidate events, 12 additional documents, 24 new model calls,
+  20 GitHub releases, five HN candidates, 20,000 source-text characters per event
+  bundle and 120 seconds per call. Zero HN/page limits disable those reads.
+  At most three developments are extracted per event.
+- Source-family round-robin assessment uses discovery order within each family.
+  Existing complete supporting text is bundled if it fits; no independent research
+  crawl is performed.
+- `[youtube] enabled`: false by default; existing explicit opt-ins are respected.
+  `scan --youtube` enables an appendix; `--no-youtube` suppresses it.
+- Collection/watchlist/exploration, interest, lookback, HTTP, cache and storage
+  settings remain configurable. No new discovery provider is added.
 
 ## Credentials
 
@@ -308,30 +226,16 @@ SLACK_WEBHOOK_URL=
 
 - **`GITHUB_TOKEN`** — optional but strongly recommended. Without it, GitHub uses anonymous public API access with substantially lower rate limits; GitHub providers degrade independently if that quota is exhausted.
 - **`HF_TOKEN`** — optional for public models and Spaces. It can improve authenticated access but is not required for normal public discovery.
-- **`YOUTUBE_API_KEY`** — optional. Without it, discovery and ranking still work and reports provide manual YouTube search links, but no live YouTube video metadata is retrieved.
+- **`YOUTUBE_API_KEY`** — optional. When the appendix is enabled, missing credentials produce manual search links instead of live video metadata. No YouTube requests are made by a default scan.
 - **`SLACK_WEBHOOK_URL`** — optional; used only by `scan --slack` and `notify`. Follow [Slack setup](#optional-slack-delivery). It is a secret, even though it looks like a URL.
 
 The CLI reads `.env` from the current working directory, not from the directory selected by `--config`. Existing environment variables take precedence over `.env`; GitHub also accepts `GH_TOKEN` as a fallback. `doctor` checks source access but does not validate or post to Slack.
 
 Never commit `.env`, credentials, private reports, or local databases. The CLI suppresses verbose HTTP logging that could otherwise expose query-string credentials, and cached URLs redact sensitive parameters.
 
-## First run and repeated runs
+## Optional YouTube appendix
 
-The radar never invents historical momentum.
-
-On a repository or story's first observation, the report shows current aggregates and explicitly marks observed growth as unavailable. Repeated scans allow SQLite to measure changes since tracking began, including:
-
-- GitHub stars at first observation, current stars, observed delta, and duration.
-- Hacker News point/comment change over the observation window.
-- Hugging Face metric changes where supported.
-
-These are **observed changes while your radar was running**, not reconstructed historical growth.
-
-Watched-repository growth events also require the configured minimum interval and growth thresholds (by default, at least 24 hours, 50 stars, and 0.5% growth). Two closely spaced scans do not guarantee a growth event. Keep scanning the same database; cached or stale reads do not add a new metric measurement.
-
-## YouTube evidence and limitations
-
-For promoted candidates within the configured YouTube candidate limit, the default setup generates up to two compact event-specific searches and retrieves supported recent video metadata. Search requests use `type=video`, relevance ordering, an English relevance-language preference, and a configurable publication window.
+When explicitly enabled, the appendix generates up to two event-specific searches for selected parent events within the YouTube candidate limit. Search requests use `type=video`, relevance ordering, an English relevance-language preference, and a configurable publication window. It does not score video suitability or validate each extracted development separately.
 
 YouTube search can still return noisy or loosely related videos. V1 preserves YouTube-returned content and order for manual inspection and deliberately avoids an expanding list of negative keywords. It does not silently filter results or calculate a default relevance ratio, crowding score, views-per-hour metric, creator tier, or YouTube-derived Opportunity Score.
 
@@ -339,158 +243,98 @@ Optional deterministic title/channel annotations exist behind `youtube.enable_lo
 
 **Retention:** live-only YouTube handling and automatic source-specific expiry cleanup are not implemented. API responses can remain in the HTTP cache, database scan records, and generated reports; cache expiry is not deletion. Manage stored data according to source requirements. Reports are evidence snapshots, not a guarantee of exact replay, and source access does not grant unrestricted redistribution rights.
 
-## Configuration
+## Evidence and optional LLM assessment
 
-`config.example.toml` is a runnable, credential-free starting point. Copy it to `config.toml` before running the CLI. It controls:
+LLM-enabled scans assess captured GitHub notes, official articles, HN-linked pages,
+repository READMEs and Hugging Face model/Space cards. Source-aware readers prefer
+documentation text to large platform UI pages. Complete captured text is reused;
+insufficient, inaccessible or oversized documents remain unassessed.
 
-- Official feeds, watched repositories, and GitHub exploration queries.
-- Provider result bounds, lookback windows, caching, and retries.
-- Entity aliases and developer-channel relevance terms.
-- Deduplication anchors and release-topic extraction terms.
-- Eligibility, interest, English-orientation, stagnation, and main-list thresholds.
-- Ranking weights and YouTube request budgets.
+Every assessed entry answers what changed, who should care and the practical
+difference, with literal source quotes, caveats and optional investigation questions.
+Publisher statements, community reports and reported tests are labeled. Radar does
+not reproduce tests or certify claims. Repeated announcements are not independent
+confirmation.
 
-Thresholds are deliberately external to code so real scan results can inform later tuning. Reports persist the effective values and configuration fingerprint.
+Calls are sequential, bounded and stop after three consecutive new-call failures.
+The report exposes source-family coverage, per-source outcomes, page reads, calls,
+cache hits, abstentions and skips. Assessment gaps mark the scan partial without
+preventing a usable report.
 
-Start with these settings before changing scoring rules:
+Public-page reads use no cookies, authentication, proxy credentials or browser
+execution. DNS answers are validated and connections pinned; redirects are
+revalidated. Private/local/reserved targets, credential-bearing URLs, nonstandard
+ports, HTTPS downgrades, oversized bodies and unsupported content types are blocked.
+Documents are limited to 256,000 response bytes and the configured text cap.
 
-| Setting | What to change |
-|---|---|
-| `github.watched_repositories` | Add `owner/repository` names for known projects you want to follow |
-| `github.exploration_queries` | Broaden discovery beyond the watchlist; `{since}` is replaced from the scan lookback |
-| `github.established_queries` | Search older recently active projects for bounded follow-up; empty or missing disables this lane |
-| `github.established_tracking_limit`, `established_followup_per_scan`, `established_tracking_days` | Bound active projects, follow-up requests per scan, and each observation window |
-| `official.feeds` | Add RSS/Atom feeds with a name and URL; an entity label is optional |
-| `relevance.*` | Adjust the AI/developer vocabulary used to select relevant items |
-| `scan.lookback_days`, `scan.top_results` | Change the event window and maximum number of opportunities |
-| `youtube.enabled`, `youtube.request_budget` | Disable video metadata or bound per-scan searches; the search budget is not an API quota-unit budget |
+The no-tools model adapter runs in an isolated temporary read-only directory with
+project instructions/tools disabled and a sanitized environment. Source credentials,
+YouTube data and Slack secrets are not supplied to the model.
 
-The original exploration queries keep their own result allowance and star ordering. The example also searches two topics for older, recently pushed public repositories, sorted by update time. Recent pushes and search position are admission signals, not measured attention. GitHub documents [repository search qualifiers](https://docs.github.com/en/search-github/searching-on-github/searching-for-repositories) and [search limits and incomplete results](https://docs.github.com/en/rest/search/search).
+Enabling assessment sends source documents to the model service and consumes your
+allowance. Confirm permission, especially for private repositories. Caches contain
+source text and output and must stay private. Disabling assessment does not delete
+existing caches or invoke the model.
 
-The established-project lane checks relevance, excludes watched/private/archived/forked repositories, and retains at most **20** projects for **14 days** in the example. It takes at most **5** results per search and makes at most **10** follow-up metadata requests per scan, even after a project leaves search results. Failures consume a follow-up turn so one failing project cannot monopolize collection. Fixed windows expire; re-admission resets its growth checkpoint. Search caps and limited topics still mean incomplete coverage.
+Developer caches use `developer-<key>.json` under the database-derived `.llm/`
+directory. Identity includes evidence, audience, model/effort, adapter, prompt and
+schema. Old video-oriented assessments cannot supply developer scores. Failures
+are cached; move only the corresponding cache file aside to explicitly retry after
+fixing the cause. Concurrent scans are not coordinated.
 
-The first observation only starts a baseline; a repository does not become a fresh event just because Radar found it. Subsequent verified measurements must meet the existing `watched_repo_growth_*` thresholds (used for both watched and discovered repository snapshots) before producing an observed-growth event. Cached/stale samples do not count as new measurements. Unchanged counters do not create another fresh event. Full reports show tracking counts while baselines accumulate. This is observed growth, not a claim of accelerating activity.
-
-Relative `paths.database` and `paths.reports` values resolve from the configuration file's directory. Credentials remain in `.env` or the process environment, not TOML.
-
-## Architecture
-
-The project is one Python package and one CLI:
-
-```text
-provider modules (concurrent, failure-isolated)
-    → normalized SourceItem records
-    → conservative entity resolution and event clustering
-    → deterministic scoring, release-topic extraction, and presentation gates
-    → optional YouTube evidence
-    → full Markdown + JSON reports
-    → changes brief from persisted event/review state
-    → optional Slack outbox and webhook delivery
-
-Radar SQLite database
-    ↳ source observations
-    ↳ aggregate-change history
-    ↳ HTTP cache
-    ↳ event identities, revisions, and review decisions
-    ↳ measured-growth checkpoints
-    ↳ saved scan records
-
-Separate Slack SQLite database (optional)
-    ↳ pending compact briefs and delivery receipts
-```
-
-Collection uses external source APIs, but all Radar state runs locally. No hosted Radar backend, message broker, vector database, or mandatory AI API is required. Slack uses a local SQLite outbox rather than a queue service.
-
-## Troubleshooting
-
-| Symptom | Check |
-|---|---|
-| Configuration not found | Copy `config.example.toml` on first setup, or pass `--config` to an existing file |
-| No Top Opportunities | Check provider status, Release Watch, and Community Watch in `latest.md`; the radar never fills the list with weak candidates |
-| `brief` is empty after a scan | Open `latest.brief.md`; the scan already marked its cards presented |
-| Growth is unavailable | Reuse the same database and wait for verified measurements over a sufficient interval; no history is invented |
-| GitHub quota exhausted or scan marked partial | Run `doctor`, configure a GitHub token if needed, and inspect the report's collection gaps |
-| YouTube metadata missing | Check the key, `--no-youtube`, `youtube.enabled`, candidate limit, and search budget; manual search links remain available for checked candidates |
-| Scheduled run misses credentials or writes elsewhere | Set the working directory explicitly and check the scheduler's executable path, timezone, availability, and logs |
-| Slack sends nothing | Use `scan --slack` or `notify`; setting the URL alone does not enable delivery. Check that `.env` contains the real webhook, not the example placeholder |
-| `notify` prints `0 sent; 0 pending` | The saved brief may already be delivered, or there is no saved/queued brief. Run a new scan when you want fresh evidence |
-| Slack delivery is pending | Check the webhook/channel settings and retry with `notify`; a stored rate-limit deadline must pass first |
-
-On normal CLI paths, `0` means the command succeeded (a scan can still be partial); `1` indicates an application error. `scan --slack` returns `2` if reports were saved but delivery failed or remains pending, and `notify` returns `2` while messages remain queued. Argument parsing also uses `2` for invalid command syntax, so read stderr rather than relying on the number alone.
-
-For a bug report, include the commit/tag, command with secrets removed, and relevant provider statuses. Use [GitHub Issues](https://github.com/dharmendrathinks/ai-trend-radar/issues); do not attach `.env`, webhook URLs, or unreviewed database/report dumps.
-
-## Development
-
-Install the project and credential-free test dependencies:
-
-```bash
-uv sync --locked --extra dev
-```
-
-Run the checks used for release preparation:
+## Development and evaluation
 
 ```bash
 uv run pytest
-uv run ai-trend-radar --help
 uv build
 ```
 
-Tests use fixtures and mocked HTTP responses; they do not require source credentials or a real Slack webhook, and they do not send Slack messages. Run `uv run ai-trend-radar doctor` separately when you want a live connectivity check; it initializes storage and may warn about optional missing credentials. Passing tests establishes implementation behavior, not recommendation precision or early-detection effectiveness.
+Tests use mocked providers/models and temporary storage. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for regression and wheel checks.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) before changing provider behavior, eligibility, or scoring.
+The [extraction experiment](experiments/release_extraction/README.md) remains a
+historical extraction-only comparison, not validation of the new impact rubric.
+The [agreed plan](docs/developer-first-plan.md) records acceptance criteria.
+The [validation record](docs/developer-first-validation.md) documents the isolated
+developer-first review and remaining evidence gaps.
+The [strategic review](docs/plan_v2.md) includes a v0.2.0 implementation audit;
+[the original plan](docs/PLAN.md) is historical.
 
-## Optional LLM-discovered updates
+For live review, use isolated configuration/database/reports and omit Slack.
+The helper below snapshots the previous report and starts fresh observation state:
 
-Run `uv run ai-trend-radar scan --llm` after installing and logging into a compatible Codex CLI. The adapter has been tested with `codex-cli 0.153.4`. It uses your local Codex login and model allowance, not an OpenAI API key. The shared example is disabled by default; existing configs without `[llm]` keep their deterministic behavior.
+```bash
+uv run python experiments/developer_review.py --config config.toml --output reports/developer-review-NEW
+```
 
-For regular and scheduled scans, add the `[llm]` section from `config.example.toml` to your local `config.toml` and set `enabled = true`. Set `codex_binary` to its absolute path if your scheduler cannot find it. `--llm` and `--no-llm` override configuration for one scan. No scheduler command change is otherwise needed.
+The output directory must not exist. This consumes configured model allowance;
+fresh state cannot reproduce production growth baselines or exact historical ranking.
 
-The first report section shows numbered model-generated topics, a score comparison table, developer value, original release links, publication dates, exact source quotes, and caveats. It reads eligible GitHub releases **before** deterministic topicability, freshness-floor, and top-N presentation gates. Release selection for extraction is newest-first, but **all extracted topics are presented in descending Overall Priority**, not grouped by release. Duplicate topics can occur across releases or between sections. Suggestions do not enter the review inbox, change deterministic Discovery Priority, receive YouTube validation, or appear in the Slack changes brief.
+Replay captured evidence without a second source crawl (zero new model calls by default):
 
-The LLM also assesses up to five distinct linked pages from **Hacker News stories selected for Top Opportunities**, in Discovery Priority order. This covers project discoveries without release notes. Page text, not just the HN headline, must support the topic. HN stories are attempted before GitHub releases under the same model-call budget. Set `llm.max_hn_stories = 0` to disable linked-page fetching. Stories outside the selected main list and other source types are not assessed; the report discloses coverage and per-source skips.
+```bash
+uv run python experiments/developer_review.py --config config.toml --output reports/developer-replay-NEW --replay-from reports/developer-review-NEW
+```
 
-The page reader follows at most three redirects, validates public DNS addresses at every hop, pins connections to validated addresses, and uses no cookies, credentials, proxies, browser rendering, or further link crawling. It accepts HTML/plain text/Markdown up to 256,000 response bytes and the configured model text limit, with a maximum 10-second socket timeout/read deadline per hop. Private/local addresses, credential-bearing URLs, unsupported formats, HTTPS downgrades, and insufficient/oversized pages are skipped. Quote checks use extracted page text (HTML entities decoded and boilerplate removed), not raw HTML. Publisher claims are not independent verification. Page text is cached in `data/radar.pages/` for the configured HTTP cache TTL, without stale-on-error fallback.
+Add `--max-calls N --retry-failed` only to explicitly allow bounded new/retried
+assessments. Replayed documents are historical artifacts, not freshly revalidated
+HTTP responses; missing documents stay unavailable. Normal scans still enforce cache expiry.
 
-Report JSON includes `source_kind`, `time_basis`, and `discovery_url`. The legacy `releases` array records both release and HN extraction attempts; `coverage` explains selection limits. All topics still receive the same four scores and are ranked together.
-
-Each topic has four independent scores **out of 100**, with reasons:
-
-| Category | Basis | Overall weight |
-|---|---|---:|
-| Developer impact | LLM editorial judgment of the documented workflow change | 30% |
-| Demo potential | LLM editorial judgment of an observable demonstration; not tested feasibility | 30% |
-| Freshness | Calculated: `100 × 2^(-age_hours / half_life_hours)` | 20% |
-| Audience impact | LLM editorial judgment of relevance to `[llm].audience`, not predicted reach or channel analytics | 20% |
-
-`Overall = 0.30 × Impact + 0.30 × Demo + 0.20 × Freshness + 0.20 × Audience impact`. The report shows categories in that order; the JSON key for audience relevance is `audience_fit`. These are editorial research priorities, **not predictions of views, demand, or video success**. Inspect individual scores to prioritize a strong demo or high-impact change yourself. The versioned `video-topic-v1` rubric uses anchored 0/25/50/75/100 descriptions in the packaged `editorial.md`. Explanations and factual claims still need human review; literal quote checks do not validate editorial judgments.
-
-Freshness uses the release publication date **or HN submission date**, and the configured ranking half-life (48 hours by default), recalculated at report generation even for cached model results. A recent HN submission is discovery recency, **not proof of a new product or feature**; its time basis is shown explicitly. Missing, invalid, or future dates produce `N/A` freshness and overall priority; missing editorial assessments also leave overall priority unavailable. Unscored topics are last. Ties use freshness, source URL, title, then stable topic ID. Full JSON preserves grouped `updates` and adds globally ordered `ranked_topics`, per-category scores/reasons, and ranking metadata. Edit `llm.audience` to describe your audience (maximum 2,000 characters); changing it requires fresh model assessments.
-
-Defaults bound each scan to 20 complete releases plus five main-list HN pages, 24 new model calls across both lanes, 20,000 input characters per source, and 120 seconds per model call. Calls are sequential and stop after three consecutive new-call failures. Large/incomplete inputs and capped releases are skipped with reasons; no truncation or automatic repair is used. A first scan may take several minutes and consume model allowance. Quote matching proves the quoted text exists, not that the model's interpretation is correct.
-
-Unchanged inputs reuse results in `data/radar.llm/` (derived from the configured database filename). Keys include source kind, identity and text, model/effort, audience, and adapter/prompt/editorial-rubric/schema hashes, not observation timestamps. Old extraction-only results cannot supply editorial scores and are not reused by scored extraction. Valid results, abstentions, and failures are cached. To retry a failed extraction after fixing login or upgrading Codex, move its `<cache_key>.json` out of this directory; the report JSON records that key. Keep cache files private: they contain captured notes and model output. Simultaneous scans are not coordinated and may duplicate calls.
-
-Model, executable, or cache problems are disclosed separately under `llm_updates.status`; the ordinary provider/scan status still describes deterministic discovery. The normal report remains available on model failure. Disabling LLM use needs no credentials and performs no model calls.
-
-Enabling this feature sends selected GitHub release notes and linked-page text for main-list HN stories to the model service. Confirm permission for all configured repositories, including any private repositories reachable with your GitHub token. YouTube content and HN comments are not sent. The adapter uses a temporary working directory, read-only execution, disabled tools, no project instructions, and an allowlisted environment that excludes source API tokens and Slack secrets.
-
-### Extraction evaluation harness
-
-The [shadow experiment](experiments/release_extraction/README.md) compares summary-input rules, complete-input rules, and evidence-constrained Codex extraction on the same captured releases. It shares the packaged adapter but retains its extraction-only prompt/schema, without editorial scores, for that comparison. It includes authored controls, quote validation, a bounded model-call budget, saved outputs, and human review materials. Its saved evaluation results are not automatically imported into normal scans and do not validate the editorial ranking rubric.
-
-The model arm requires an explicit command and a local Codex login. It sends the selected notes to the model service; generated data remains in ignored local reports. This is a way to evaluate whether language understanding helps, not evidence that the model already improves recommendations.
+Do not use production state to test migration or overwrite a previous report.
+Explicit feedback can document usefulness and misses; self-selected counts are not
+precision, recall or proof of productivity gains.
 
 ## Current limitations
 
-- Deterministic heuristics require calibration against real use; they are not learned predictions.
-- Model extraction is optional and limited to captured GitHub release notes and selected HN-linked public pages; it is not semantic clustering or virality prediction. Its suggestions require human review and do not change deterministic recommendations.
-- Growth is measured only after local tracking begins.
-- Provider availability, API quotas, upstream schemas, and feed quality constrain results.
-- Presentation is English-oriented using a transparent Latin-script proxy, not full language identification.
-- Entity resolution and deduplication are intentionally conservative, so occasional duplicates are preferred over incorrect merges.
-- YouTube competition remains a manual judgment.
-- Optional Slack briefs are the only notification integration. No dashboard, historical backfill, Reddit, X/Twitter, Google Trends, or paid trend provider is included.
+- Impact scores require human judgment and are not calibrated to measured outcomes.
+- Discovery and assessment are bounded; unassessed does not mean unimportant.
+- No autonomous verification, test execution, semantic story graph or guaranteed
+  cross-source deduplication. Changed source anchors can create related new topics.
+- Current documentation may describe an existing capability, not a new release.
+- Growth is measured only after local observation starts.
+- Source quotas, availability, document size and parsing constrain coverage.
+- Optional Slack is the only notification integration. No dashboard, hosted service,
+  historical backfill or new social provider is included.
 
 ## Source APIs and attribution
 

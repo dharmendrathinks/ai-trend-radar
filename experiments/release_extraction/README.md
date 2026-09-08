@@ -1,8 +1,17 @@
 # Release extraction shadow experiment
 
-Normal scans now use an additional editorial rubric (`llm_assets/editorial.md`) and `scored.schema.json` to assess video-topic priority. This harness intentionally retains the extraction-only `prompt.md` and `response.schema.json` through the shared adapter's default mode. Its review results do not validate editorial scores or topic ranking.
+Current-source scans use the developer-first `llm_assets/developer.md` and
+`developer.schema.json` contract, with impact/relevance/urgency scores. The published
+v0.2.0 used `editorial.md` and `scored.schema.json` for video-oriented priority.
+This harness retains the extraction-only `prompt.md` / `response.schema.json`
+contract through the shared adapter's default mode. Its results validate neither
+developer scores nor video priority. Deterministic rules now also recognize
+consequential correctness fixes; recorded source hashes identify the actual rules.
 
-Compare three extraction methods on the same saved releases. This standalone, opt-in evaluation harness shares the packaged adapter with normal scans, but its saved outputs do not alter scores, topicability gates, review decisions, normal reports, the Slack brief, or your schedule. For the shipped optional report section, see the [normal-scan guide](../../README.md#optional-llm-discovered-updates). The shared prompt and response schema live in `src/ai_trend_radar/llm_assets/`; edit them there, not in this directory.
+Compare three extraction methods on the same saved releases. This opt-in harness
+shares the packaged adapter but never changes normal reports, review decisions,
+Slack or schedules. See the [current assessment guide](../../README.md#evidence-and-optional-llm-assessment).
+The shared assets live in `src/ai_trend_radar/llm_assets/`; edit them there.
 
 | Arm | Input and method |
 |---|---|

@@ -201,6 +201,9 @@ def _llm_markdown(data: dict[str, Any]) -> list[str]:
 
 
 def render_markdown(report: dict[str, Any]) -> str:
+    if report.get('schema_version') == '3.0':
+        from ai_trend_radar.developer_reports import render_developer_report
+        return render_developer_report(report)
     lines = [
         "# AI Trend Radar",
         "",

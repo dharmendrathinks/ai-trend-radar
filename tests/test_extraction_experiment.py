@@ -241,4 +241,4 @@ def test_prepare_latest_scan_excludes_old_storage_and_accepts_schema_two(tmp_pat
     with pytest.raises(ValueError, match="cannot be combined"):
         experiment.prepare(tmp_path / "controls", app_config, settings, True, "latest")
     with database.connect() as cx:
-        assert cx.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert cx.execute("PRAGMA user_version").fetchone()[0] == 3

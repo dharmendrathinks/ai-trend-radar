@@ -64,8 +64,34 @@ def validate_model(response: Any, evidence: dict[str, Any], *, scored: bool = Fa
     return checks, ([] if all(c["matched"] for c in checks) else ["One or more evidence quotes are not literal source spans"])
 
 
+def validate_developments(response: Any, evidence: dict[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
+    validate_schema(response, read(HERE / "developer.schema.json"))
+    if bool(response["developments"]) == bool(response["abstain_reason"].strip()):
+        raise ValueError("Supply developments or an abstention reason, not both")
+    blocks = {b["evidence_id"]: b for b in evidence["blocks"]}
+    checks, seen = [], set()
+    for topic in response["developments"]:
+        anchor = topic["primary_evidence_id"]
+        if anchor in seen or anchor not in blocks:
+            raise ValueError("Primary evidence anchor is duplicate or unknown")
+        seen.add(anchor)
+        if topic["evidence_type"] not in {"publisher statement", "community report", "reported test"}:
+            raise ValueError("Unsupported evidence type")
+        if topic["change_kind"] not in {"capability", "fix", "breaking change", "pricing/access", "practical finding"}:
+            raise ValueError("Unsupported change kind")
+        cited = set()
+        for quote in topic["evidence_quotes"]:
+            block = blocks.get(quote["evidence_id"])
+            matched = bool(block and quote["quote"] in block["text"])
+            checks.append({"matched": matched, "evidence_id": quote["evidence_id"]})
+            cited.add(quote["evidence_id"])
+        if anchor not in cited:
+            raise ValueError("Primary anchor must have a literal quote")
+    return checks, ([] if all(c["matched"] for c in checks) else ["One or more evidence quotes are not literal source spans"])
+
+
 def codex_command(binary: str, directory: Path, config: dict[str, Any]) -> list[str]:
-    schema = "scored.schema.json" if config.get("editorial_scoring") else "response.schema.json"
+    schema = "developer.schema.json" if config.get("developer_assessment") else ("scored.schema.json" if config.get("editorial_scoring") else "response.schema.json")
     command = [binary, "exec", "--ignore-user-config", "--ephemeral", "--skip-git-repo-check",
                "--sandbox", "read-only", "--cd", str(directory), "--model", config["model"],
                "--json", "--output-schema", str(HERE / schema),
@@ -83,9 +109,12 @@ def model_result(evidence: dict[str, Any], config: dict[str, Any], binary: str) 
     allowed = {"PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "CODEX_HOME", "SYSTEMROOT", "WINDIR",
                "APPDATA", "LOCALAPPDATA", "SSL_CERT_FILE", "SSL_CERT_DIR"}
     env = {key: value for key, value in os.environ.items() if key.upper() in allowed}
-    supplied = {key: evidence[key] for key in ("title", "repository", "tag", "source_url", "notes")}
+    supplied = dict(evidence) if config.get("developer_assessment") else {key: evidence[key] for key in ("title", "repository", "tag", "source_url", "notes")}
     community = config.get("source_kind") == "hacker_news_page"
     prompt = (HERE / ("community.md" if community else "prompt.md")).read_text()
+    if config.get("developer_assessment"):
+        prompt = (HERE / "developer.md").read_text()
+        supplied["audience"] = config["audience"]
     if config.get("editorial_scoring"):
         prompt += "\n\n" + (HERE / "editorial.md").read_text()
         supplied["audience"] = config["audience"]
@@ -130,7 +159,8 @@ def model_result(evidence: dict[str, Any], config: dict[str, Any], binary: str) 
             if output.is_file():
                 try:
                     record["response"] = read(output)
-                    checks, errors = validate_model(record["response"], evidence, scored=bool(config.get("editorial_scoring")))
+                    checks, errors = (validate_developments(record["response"], evidence) if config.get("developer_assessment")
+                                      else validate_model(record["response"], evidence, scored=bool(config.get("editorial_scoring"))))
                     record["quote_checks"] = checks
                     record["errors"].extend(errors)
                 except (ValueError, TypeError, KeyError):

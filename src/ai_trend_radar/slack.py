@@ -57,6 +57,19 @@ def build_payload(brief: dict[str, Any]) -> dict[str, Any]:
     for key, label, limit in (("new", "New discovery", 14), ("updated", "Material update", 3), ("due", "Reminder due", 3)):
         for item in brief[key][:limit]:
             c = item["candidate"]
+            if 'developer_priority' in c:
+                overall = c['developer_priority']['overall']
+                lines = [f"{label}: {_short(c['title'], 250)}", f"Topic: {c['topic_id']} · Priority: {overall if overall is not None else 'N/A'}",
+                         f"What changed: {_short(c['what_changed'], 650)}", f"Who should care: {_short(c['who_should_care'], 650)}",
+                         f"Practical difference: {_short(c['practical_difference'], 750)}", f"Evidence: {_short(c['evidence_type'], 100)}; not independently verified."]
+                if not item.get('current', True):
+                    lines.append('Not rechecked in this scan.')
+                if item.get('disposition') != 'main':
+                    lines.append('Reminder only; currently outside the main list.')
+                lines.extend(_short(url, 300) for url in c['source_links'][:2])
+                blocks.append(_plain('\n'.join(lines)))
+                shown += 1
+                continue
             lines = [f"{label}: {_short(c.get('display_title') or c['title'], 250)}",
                      f"Event: {_short(item['event_id'], 64)} · {_short(item['reason'], 120)}",
                      f"Event time: {_short(c['event_time'], 40)} ({_short(c.get('event_time_basis', 'source timestamp'), 80)})",
@@ -78,8 +91,9 @@ def build_payload(brief: dict[str, Any]) -> dict[str, Any]:
         footer = "No new qualifying changes in this scan. " + footer
     if shown < total:
         footer = f"Showing {shown} of {total} changes; remaining cards are in the local brief. " + footer
-    footer += "\nReview locally: ai-trend-radar decide EVENT_ID reviewed"
-    footer += "\nRate locally: ai-trend-radar feedback EVENT_ID investigate --known no (or brief/skip; known yes/no/unknown)."
+    key_name = 'TOPIC_ID' if brief.get('schema_version') == '3.0' else 'EVENT_ID --event'
+    footer += f"\nReview locally: ai-trend-radar decide {key_name} reviewed"
+    footer += f"\nRate locally: ai-trend-radar feedback {key_name} investigate --known no (or brief/skip; known yes/no/unknown)."
     blocks.append(_plain(footer))
     return {"text": summary, "blocks": blocks, "unfurl_links": False, "unfurl_media": False}
 

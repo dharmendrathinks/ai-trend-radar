@@ -171,9 +171,13 @@ class RadarState:
                 last = cx.execute('SELECT scan_id FROM scans ORDER BY completed_at DESC LIMIT 1').fetchone()
                 scan_id = last[0] if last else None
             rows = cx.execute('SELECT * FROM radar_events WHERE revision>0').fetchall()
-            scan = cx.execute('SELECT provider_status_json FROM scans WHERE scan_id=?', (scan_id,)).fetchone()
+            scan = cx.execute('SELECT provider_status_json,report_json FROM scans WHERE scan_id=?', (scan_id,)).fetchone()
+            topic_ids = {r[0] for r in cx.execute('SELECT topic_id FROM development_topics')}
+        topic_mode = bool(scan and json.loads(scan[1]).get('schema_version') == '3.0')
         sections: dict[str, list] = {'new': [], 'updated': [], 'due': []}
         for row in rows:
+            if row['disposition'] == 'superseded' or (topic_mode and row['event_id'] not in topic_ids):
+                continue
             deferred = row['decision'] == 'deferred'
             if deferred and datetime.fromisoformat(row['deferred_until'].replace('Z', '+00:00')) > now:
                 continue
@@ -186,13 +190,19 @@ class RadarState:
                     continue
             section = 'due' if deferred else ('new' if row['briefed_revision'] == 0 and row['decision'] != 'reopen' else 'updated')
             payload = json.loads(row['payload_json'])
+            if topic_mode:
+                payload.setdefault('review_state', {}).update(decision=row['decision'], deferred_until=row['deferred_until'])
             sections[section].append({'event_id': row['event_id'], 'revision': row['revision'],
                                       'reason': 'deferral due' if deferred else row['change_reason'],
                                       'last_scan_id': row['scan_id'], 'current': row['scan_id'] == scan_id,
                                       'disposition': row['disposition'], 'decision': row['decision'],
                                       'deferred_until': row['deferred_until'], 'candidate': payload})
         for name, values in sections.items():
-            values.sort(key=lambda x: (-x['candidate']['discovery_priority'], x['event_id']))
+            if topic_mode:
+                from ai_trend_radar.developments import sort_key
+                values.sort(key=lambda x: sort_key(x['candidate']))
+            else:
+                values.sort(key=lambda x: (-x['candidate']['discovery_priority'], x['event_id']))
             sections[name] = values[:top if name == 'new' else 3]
         return {'scan_id': scan_id, 'generated_at': isoformat(now), 'provider_status': json.loads(scan[0]) if scan else [], **sections}
 
@@ -242,6 +252,14 @@ def render_brief(brief: dict[str, Any]) -> str:
             lines.extend(['None.', ''])
         for item in brief[key]:
             c = item['candidate']
+            if 'developer_priority' in c:
+                from ai_trend_radar.developer_reports import topic_markdown
+                lines.extend(topic_markdown(c, None))
+                if not item['current']:
+                    lines.extend(['Not rechecked in this scan; inspect the source before acting.', ''])
+                if item['disposition'] != 'main':
+                    lines.extend(['Reminder only; this item does not currently qualify for the main list.', ''])
+                continue
             lines.extend([f"### {c.get('display_title') or c['title']}", '',
                           f"Event: `{item['event_id']}` · {item['reason']}", '',
                           f"Event time: {c['event_time']} ({c.get('event_time_basis', 'source timestamp')}).", '',
